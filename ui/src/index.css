@@ -134,10 +134,12 @@ body {
   color: white !important;
   border: none !important;
   outline: none !important;
+  font-size: 18px !important;
 }
 
 .cm-content {
   color: white !important;
+  font-size: 18px !important;
 }
 
 /* Gutters - semi-transparent for visibility */
@@ -211,4 +213,35 @@ body {
 /* Target any canvas created by Strudel scope inside CodeMirror or editor */
 .cm-editor canvas {
   pointer-events: none !important;
+  max-width: 100% !important;
+  height: auto !important;
+  display: block !important;
+  transform: none !important;
+  margin: 0 !important;
+}
+
+/* Ensure CodeMirror lines maintain proper height on mobile */
+.cm-line {
+  min-height: 1.5em !important;
+  line-height: 1.5 !important;
+  display: block !important;
+}
+
+.cm-content {
+  line-height: 1.5 !important;
+}
+
+/* Mobile-specific fixes */
+@media (max-width: 768px) {
+  .cm-line {
+    min-height: 1.5em !important;
+    line-height: 1.5 !important;
+  }
+  
+  /* Prevent canvas transforms from breaking layout on mobile */
+  .cm-editor canvas {
+    transform: none !important;
+    max-width: 100% !important;
+    margin-bottom: 0 !important;
+  }
 }

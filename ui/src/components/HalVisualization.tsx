@@ -361,8 +361,19 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
     lastPlayingStateRef.current = isPlaying
 
     // Scale canvas display to fill container width using CSS transform
+    // NOTE: Disabled on mobile to prevent layout issues with CodeMirror
     const scaleCanvasToFit = (canvas: HTMLCanvasElement) => {
       try {
+        // Don't scale canvases inside CodeMirror on mobile - CSS handles it
+        const isNarrow = window.innerWidth < 768
+        if (isNarrow) {
+          // Reset any transforms on mobile - let CSS handle sizing
+          canvas.style.transform = ''
+          canvas.style.transformOrigin = ''
+          canvas.style.marginBottom = ''
+          return
+        }
+        
         // Get the container width (the editor width)
         const container = canvas.closest('.cm-editor')
         if (!container) return
@@ -370,10 +381,7 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
         const containerWidth = container.clientWidth
         const canvasWidth = canvas.width
         
-        // On narrow screens, scale canvas to fill the full width
-        const isNarrow = window.innerWidth < 768
-        
-        if (isNarrow && containerWidth > 0 && canvasWidth > 0) {
+        if (containerWidth > 0 && canvasWidth > 0) {
           // Calculate scale factor to fill container
           const scale = containerWidth / canvasWidth
           
@@ -386,7 +394,7 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
             canvas.style.marginBottom = `${canvas.height * (scale - 1)}px`
           }
         } else {
-          // Reset transform on wider screens
+          // Reset transform
           canvas.style.transform = ''
           canvas.style.transformOrigin = ''
           canvas.style.marginBottom = ''
