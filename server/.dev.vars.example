@@ -1,0 +1,13 @@
+# Development environment variables for Toaster API
+# Copy this file to .dev.vars and fill in your actual values
+# .dev.vars is gitignored and used by wrangler for local development
+
+# OpenRouter API Key (required)
+# Get your key from: https://openrouter.ai/
+OPENROUTER_API_KEY=your-openrouter-api-key-here
+
+# Optional: Specify which model to use
+# Default: google/gemini-2.5-flash
+# Other options: anthropic/claude-3.5-sonnet, openai/gpt-4o, etc.
+# OPENROUTER_MODEL=google/gemini-2.5-flash
+

@@ -1,0 +1,31 @@
+name = "toaster-api"
+main = "src/index.ts"
+compatibility_date = "2023-12-18"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Environment variables
+APP_URL = "https://volobuilds.com"
+OPENROUTER_MODEL = "google/gemini-2.5-flash"
+
+# KV namespace for sharing patterns
+# Run: wrangler kv:namespace create "SHARES_KV" to get these IDs
+[[kv_namespaces]]
+binding = "SHARES_KV"
+id = "your-kv-namespace-id-here"
+preview_id = "your-preview-kv-namespace-id-here"
+
+# Overall rate limit (generous - allows significant traffic)
+# This protects against total system overload
+[[ratelimits]]
+name = "RATE_LIMITER_GLOBAL"
+namespace_id = "1001"
+simple = { limit = 10000, period = 60 }
+
+# Per-IP rate limit (tighter - prevents individual abuse)
+# Used in code to limit expensive LLM API calls per user
+[[ratelimits]]
+name = "RATE_LIMITER_IP"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }
+

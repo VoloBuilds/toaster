@@ -1,0 +1,9 @@
+- Tech stack: React (vite), Tailwind, ShadCN, Firebase Auth, Supabase postgres, pnpm, Node.JS, Hono API
+- Use `pnpm add` when installing new packages.
+- Use `npx shadcn add` to add new shadcn components.
+- You are not able to see or modify .env files directly - so tell the user what they should add to the file if needed.
+- Avoid classes/OOP and use a functional programming style.
+- Never try to start the app itself (I have it running in a separate terminal) 
+- When conducting data schema changes that impact the database, just write the sql to a file and I will run it myself. Don't write any foreign key constraints or cascades.
+- Don't ever use sonner, toast, or notifications
+- Any imports should be at the top of the file (no inline dynamic imports)
