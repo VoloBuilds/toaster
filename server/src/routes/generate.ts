@@ -88,7 +88,7 @@ IMPORTANT: Return the FULL updated pattern based on the user's request. If they 
     //TODO: Not sure why the env.OPENROUTER_MODEL is getting ignored
     // model: 'x-ai/grok-4-fast',
     // model: env.OPENROUTER_MODEL || 'google/gemini-2.5-flash',
-    model: 'google/gemini-2.5-flash-preview-09-2025',
+    model: 'google/gemini-3-flash-preview',
     // model: 'google/gemini-2.5-flash-lite-preview-09-2025',
     // model: 'openai/gpt-4.1-mini',
     messages: [
