@@ -465,7 +465,7 @@ const HomePage = () => {
                   <Square className="h-3 w-3 mx-1" />
                   {isMac ? 'CMD+. // ' : 'CTRL+. // '}
                   <a 
-                    href="https://github.com/VoloBuilds/toaster" 
+                    href="https://youtu.be/Rhxc0NPakGE" 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="text-slate-400 hover:text-slate-200 underline underline-offset-2"

@@ -28,6 +28,11 @@ generateRoute.post('/', async (c) => {
       return c.json({ error: 'Prompt is required and must be a string' }, 400)
     }
 
+    // Limit prompt to 2000 characters to prevent abuse
+    if (prompt.length > 2000) {
+      return c.json({ error: 'Prompt exceeds maximum length of 2,000 characters' }, 400)
+    }
+
     // Limit currentPattern to 100k characters to prevent abuse
     if (currentPattern && typeof currentPattern === 'string' && currentPattern.length > 100000) {
       return c.json({ error: 'Current pattern exceeds maximum length of 100,000 characters' }, 400)

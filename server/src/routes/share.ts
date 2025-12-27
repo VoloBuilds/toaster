@@ -105,10 +105,29 @@ shareRoute.post('/', async (c) => {
 // GET /api/share/:id - Retrieve a shared pattern
 shareRoute.get('/:id', async (c) => {
   try {
+    // Rate limiting for GET requests (prevents enumeration/brute-force attacks)
+    // Use a higher limit than POST since this is just a read operation
+    if (c.env.RATE_LIMITER_IP) {
+      const clientIP = c.req.header('cf-connecting-ip') || 'anonymous'
+      const { success } = await c.env.RATE_LIMITER_IP.limit({ key: `get:${clientIP}` })
+      
+      if (!success) {
+        return c.json({ 
+          error: 'Rate limit exceeded. Please wait a moment before loading more patterns.',
+          retryAfter: 60 
+        }, 429)
+      }
+    }
+
     const shareId = c.req.param('id')
 
     if (!shareId) {
       return c.json({ error: 'Share ID is required' }, 400)
+    }
+
+    // Validate share ID format (only allow valid characters, max 16 chars)
+    if (!/^[A-Za-z0-9_-]{1,16}$/.test(shareId)) {
+      return c.json({ error: 'Invalid share ID format' }, 400)
     }
 
     const code = await c.env.SHARES_KV.get(`share:${shareId}`)
