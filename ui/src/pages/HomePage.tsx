@@ -2,9 +2,11 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '../components/ui/button'
 import { Textarea } from '../components/ui/textarea'
 import { Loader2, Mic, MicOff, Play, Square, Share2, Check, Undo, Redo, AlertTriangle, Wrench } from 'lucide-react'
-import StrudelEditor from '../components/StrudelEditor'
+import StrudelEditor, { CycleInfo } from '../components/StrudelEditor'
 import HalVisualization from '../components/HalVisualization'
 import ClearButton from '../components/ClearButton'
+// EXPERIMENTAL: Hum-to-melody feature - uncomment to enable
+// import MelodyInput from '../experimental/pitch/MelodyInput'
 
 // const DEFAULT_CODE = `// Welcome to Toaster! Try this example or generate your own with AI below.
 // note("c3 e3 g3 c4").s("sine").lpf(800).room(.2).color("red")._scope()`
@@ -41,6 +43,7 @@ const HomePage = () => {
   const editorUndoRef = useRef<(() => void) | null>(null)
   const editorRedoRef = useRef<(() => void) | null>(null)
   const editorClearRef = useRef<(() => void) | null>(null)
+  const getCycleInfoRef = useRef<(() => CycleInfo | null) | null>(null)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const pauseTimerRef = useRef<number | null>(null)
   const currentTranscriptRef = useRef<string>('')
@@ -155,6 +158,10 @@ const HomePage = () => {
 
   const handleClearReady = useCallback((clearFn: () => void) => {
     editorClearRef.current = clearFn
+  }, [])
+
+  const handleCycleInfoReady = useCallback((getCycleInfoFn: () => CycleInfo | null) => {
+    getCycleInfoRef.current = getCycleInfoFn
   }, [])
 
   const handleClear = useCallback(() => {
@@ -454,6 +461,12 @@ const HomePage = () => {
     }
   }
 
+  // EXPERIMENTAL: Hum-to-melody feature - uncomment to enable
+  // const handleMelodyCapture = useCallback((notation: string) => {
+  //   const melodyText = `Use the melody "${notation}"`
+  //   setPrompt(prev => prev ? `${prev} ${melodyText}` : melodyText)
+  // }, [])
+
   const handleFixError = async () => {
     if (!strudelError) return
 
@@ -595,6 +608,7 @@ Return ONLY the fixed Strudel code, no explanations.`
               onClearReady={handleClearReady}
               onStrudelError={handleStrudelError}
               onCodeEvaluated={handleCodeEvaluated}
+              onCycleInfoReady={handleCycleInfoReady}
             />
           </div>
         </div>
@@ -739,6 +753,16 @@ Return ONLY the fixed Strudel code, no explanations.`
                     </Button>
                   </div>
                 )}
+
+                {/* EXPERIMENTAL: Melody Input Button - Press-and-hold for hum-to-melody */}
+                {/* Uncomment to enable:
+                <MelodyInput
+                  onMelodyCapture={handleMelodyCapture}
+                  disabled={isGenerating}
+                  isPlaying={isEditorPlaying}
+                  getCycleInfo={getCycleInfoRef.current || undefined}
+                />
+                */}
 
                 {/* AI Prompt Input with Send Button - Center */}
                 <div className="flex-1 relative">

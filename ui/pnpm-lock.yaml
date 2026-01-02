@@ -47,6 +47,9 @@ importers:
       lucide-react:
         specifier: ^0.294.0
         version: 0.294.0(react@18.3.1)
+      pitchfinder:
+        specifier: ^2.3.4
+        version: 2.3.4
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -1427,6 +1430,9 @@ packages:
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
+
+  pitchfinder@2.3.4:
+    resolution: {integrity: sha512-GK1bWPaS1p2fB8ZUh1qXi/6iA55qxLoAS9NgqvReM5+tlUr1ch3dJvO9pikp7qpWLI7FlQBQhsl9eOwR6GAPwg==}
 
   postcss-import@15.1.0:
     resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
@@ -3186,6 +3192,8 @@ snapshots:
   pify@2.3.0: {}
 
   pirates@4.0.7: {}
+
+  pitchfinder@2.3.4: {}
 
   postcss-import@15.1.0(postcss@8.5.6):
     dependencies:
