@@ -94,9 +94,12 @@ Understanding the difference between notes and sounds is fundamental to avoiding
    note("c e g")
      .juxBy(0.5, x => x.add(7))  // ❌ ERROR - Can't do arithmetic on control patterns from note()!
    
-   // ✅ Use .trans() instead for control patterns:
-   note("c e g")
-     .superimpose(x => x.trans(7))  // ✅ .trans() works on control patterns!
+   // ✅ Use .trans() on the main chain, or layer() for harmonies:
+   note("c e g").trans(7).s("piano")  // ✅ .trans() works on the chain!
+   note("c e g").layer(
+     x => x.s("piano"),
+     x => x.trans(7).s("piano").gain(0.5)  // ✅ Harmony via layer()
+   )
    \`\`\`
 
 **When to use each:**
@@ -120,12 +123,11 @@ n("0 [2 4] 7 4 2 ~ 0 ~")
 note("g3 [bb3 d4] ~ f4 ~ [eb4 d4]")
   .s("piano")
 
-// Raw pattern with transformations (for superimpose, etc.)
-"[0 2] ~ 4 7 ~ [5 4]"
-  .superimpose(x => x.add(2))  // Add harmony
-  .scale("D:minor")
-  .note()  // Convert to notes AFTER transformations
-  .s("sawtooth")
+// Harmonies via layer() - the reliable approach
+n("[0 2] ~ 4 7 ~ [5 4]").scale("D:minor").layer(
+  x => x.s("sawtooth"),
+  x => x.trans(3).s("sawtooth").gain(0.5)  // Add thirds via layer
+)
 \`\`\`
 
 ### Brackets: Chords vs Sequences

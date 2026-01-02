@@ -298,9 +298,11 @@ note("d2 [f2 a2] ~ d3 [c3 a2] ~").s("wt_dbass").n(run(8))
 
 ## Detuning and Layering for Thickness
 
-Use superimpose to create rich, wide sounds. Remember: superimpose must come BEFORE .note() or .s().
+Use \`layer()\` to create rich, wide sounds with harmonies and octaves on control patterns. For raw strings, you can also use \`superimpose(x=>x.add())\`.
 
 **IMPORTANT:** When detuning with \`.add(note(...))\`, you're adding **note patterns**, not doing arithmetic. This is different from \`.add(7)\` which would fail on control patterns.
+
+**Note:** \`superimpose(x=>x.add())\` works on raw strings, but \`superimpose(x=>x.trans())\` throws errors on control patterns (\`n()\` or \`note()\`). Use \`layer()\` for harmony layering on control patterns.
 
 **Chorus effect (slight detune with notes):**
 \`\`\`js
@@ -318,26 +320,20 @@ note("<c3 eb3 g3 c4>")
   .lpf(1500)
 \`\`\`
 
-**Layered harmonies with scale degrees (PREFERRED METHOD):**
+**Layered harmonies with scale degrees (PREFERRED METHOD - use layer()):**
 \`\`\`js
-"[0 2] [~ 5] 4 7 ~ [4 2] 5 1"
-  .superimpose(x => x.add(7))  // Add 7 semitones up (power chord)
-  .scale("E:minor")
-  .note()
-  .s("sawtooth")
-  .lpf(800)
-  .gain(0.4)  // Turn down to prevent clipping
+n("[0 2] [~ 5] 4 7 ~ [4 2] 5 1").scale("E:minor").layer(
+  x => x.s("sawtooth"),
+  x => x.trans(7).s("sawtooth").gain(0.5)  // Power chord (fifth up)
+).lpf(800).gain(0.4)
 \`\`\`
 
-**Alternative: Using note() with detuning:**
+**Multiple harmony layers:**
 \`\`\`js
-"[0 2 4] [9 7]"
-  .superimpose(x => x.add(2))  // Add thirds
-  .superimpose(x => x.add(4))  // Add fifths
-  .scale("D:dorian")
-  .note()
-  .s("sawtooth")
-  .lpf(800)
-  .gain(0.4)
+n("[0 2 4] [9 7]").scale("D:dorian").layer(
+  x => x.s("sawtooth"),
+  x => x.trans(3).s("sawtooth").gain(0.5),  // Third up
+  x => x.trans(7).s("sawtooth").gain(0.4)   // Fifth up
+).lpf(800).gain(0.4)
 \`\`\`
 `

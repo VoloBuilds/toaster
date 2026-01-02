@@ -150,10 +150,21 @@ note("c e g").add(7)  // ❌ ERROR - can't do arithmetic on note()!
 \`\`\`js
 n("0 2 4").scale("C:minor").trans(12).s("piano")  // ✅ .trans() works on control patterns!
 note("c e g").trans(7).s("piano")  // ✅ .trans() works!
-n("0 2 4").scale("C:minor").superimpose(x=>x.trans(12)).s("piano")  // ✅ .trans() in callbacks!
 \`\`\`
 
-**Why:** \`n()\` and \`note()\` create **control patterns**. Arithmetic (.add, .mul, .sub, .div) only works on raw strings. Use \`.trans()\` to transpose control patterns by semitones.
+**⚠️ .trans() does NOT work inside superimpose callbacks!** Use \`layer()\` instead:
+\`\`\`js
+// ❌ WRONG - superimpose with trans throws errors
+n("0 2 4").scale("C:minor").superimpose(x=>x.trans(12))  // ERROR!
+
+// ✅ CORRECT - use layer() for octave/harmony layering
+n("0 2 4").scale("C:minor").layer(
+  x => x.s("piano"),
+  x => x.trans(12).s("piano").gain(0.5)
+)
+\`\`\`
+
+**Why:** \`n()\` and \`note()\` create **control patterns**. Arithmetic (.add, .mul, .sub, .div) only works on raw strings. Use \`.trans()\` on the main pattern chain, but use \`layer()\` for harmony/layering.
 
 ---
 
@@ -171,15 +182,17 @@ note("c3 d3 e3").trans(7)      // Shift up a perfect fifth
 note("a4 b4 c5").trans("<0 -2 -4>")  // Pattern the transposition
 n("0 2 4").scale("C:minor").trans(12)  // ✅ .trans() works on n().scale()!
 
-// Useful for octave layering
+// ✅ Use layer() for octave/harmony layering
 note("c3 e3 g3").layer(
-  x => x,              // Original
-  x => x.trans(12)     // Octave up - .trans() works in callbacks!
+  x => x.s("piano"),
+  x => x.trans(12).s("piano").gain(0.5)  // Octave up
 )
 
-// Superimpose with .trans() on control patterns
-n("0 2 4").scale("C:minor").superimpose(x=>x.trans(12)).s("piano")  // ✅ Octave harmony
-note("c3 e3 g3").superimpose(x=>x.trans(7)).s("piano")  // ✅ Fifth harmony
+// ✅ Fifth harmony with layer()
+n("0 2 4").scale("C:minor").layer(
+  x => x.s("piano"),
+  x => x.trans(7).s("piano").gain(0.6)  // Fifth up
+)
 
 **Multiply, subtract, divide (raw strings only):**
 "1 2 3".mul(2).scale("D:minor").note()      // Raw string - multiply scale degrees, then .note()
@@ -190,47 +203,51 @@ note("c3 e3 g3").superimpose(x=>x.trans(7)).s("piano")  // ✅ Fifth harmony
 
 ### Layering and Accumulation
 
-**Superimpose (layer with transformation):**
-Plays the original pattern plus a transformed version simultaneously.
+**Layer (recommended for harmony/layering):**
+Use \`layer()\` to play multiple transformed versions of a pattern. This is the reliable way to create harmonies and octave layers.
 
-**IMPORTANT:** Superimpose works on patterns BEFORE they become notes/sounds. Apply it before \`.note()\` or \`.s()\`:
+// ✅ Layer with transposition for harmonies
+n("0 2 4 7").scale("C:minor").layer(
+  x => x.s("piano"),
+  x => x.trans(12).s("piano").gain(0.5)  // Octave up
+)
 
-// ✅ CORRECT - Raw string: superimpose → scale → .note()
+// ✅ Multiple harmony layers
+n("[0 2] ~ 4 7 ~ [4 2]").scale("E:minor").layer(
+  x => x.s("square"),
+  x => x.trans(3).s("square").gain(0.6),  // Third up
+  x => x.trans(7).s("square").gain(0.4)   // Fifth up
+).lpf(1500)
+
+// ✅ Detuning for chorus/width effect
+note("c2 eb2 g2 bb2").layer(
+  x => x.s("sawtooth"),
+  x => x.trans(0.05).s("sawtooth")  // Slight detune
+).lpf(600)
+
+**Superimpose with raw strings (works):**
+\`\`\`js
+// ✅ superimpose(x=>x.add()) works on RAW STRINGS (before .note() or .n())
 "<0 2 4 6 ~ 4 ~ 2 0!3 ~!5>*8"
   .superimpose(x=>x.add(2))  // Add harmony (thirds)
-  .scale('C:minor').note()  // Raw string needs .note()
-
-// ⚠️ n() with superimpose(x=>x.add()) does NOT work!
-// n() creates control patterns - can't do arithmetic inside superimpose callbacks
-// Use raw strings instead (shown above)
+  .scale('C:minor').note()
 
 "c2 eb2 g2 bb2"
   .superimpose(x=>x.add(0.05))  // Detune for chorus
   .s("sawtooth")
+\`\`\`
 
-// ❌ WRONG - can't superimpose after .note() or .s()
-note("c e g").superimpose(x=>x.add(7))  // Won't work!
-n("0 2 4").scale("C:minor").superimpose(x=>x.add(7))  // Won't work - already control patterns!
+**⚠️ superimpose with .trans() does NOT work on control patterns:**
+\`\`\`js
+// ❌ These throw errors - control patterns (n() or note()) can't use superimpose with trans()
+n("0 2 4").scale("C:minor").superimpose(x=>x.trans(12))   // ERROR!
+note("c e g").superimpose(x=>x.trans(7))  // ERROR!
+\`\`\`
 
-**Common uses:**
-// Detuning for chorus/width effect
-"c2 eb2 g2 bb2"
-  .superimpose(x=>x.add(0.05))
-  .s("sawtooth").lpf(600)
-
-// Layering harmonies (raw string version)
-"[0 2] ~ 4 7 ~ [4 2]"
-  .superimpose(x=>x.add(2))  // Add thirds
-  .scale("E:minor").note()  // Raw string needs .note()
-
-// ⚠️ n() with superimpose does NOT work - use raw strings above instead!
-// n() creates control patterns, and superimpose callbacks can't do arithmetic on them
-
-// Creating thickness with octaves
-"0 [2 4] ~ 6@2 [5 4]"
-  .superimpose(x=>x.add(12))  // Octave up
-  .scale("E:minor").note()
-  .s("square").lpf(1500)
+**Superimpose works for non-pitch transformations:**
+// ✅ Time/effect transformations work
+s("bd sd hh oh").superimpose(x => x.fast(2).gain(0.3))
+s("cp").superimpose(x => x.delay(0.5))
 
 **Echo (delay with feedback):**
 Creates echoes of the pattern at a given time interval.
@@ -502,7 +519,7 @@ note("a!2 ~ [c# e] a4 ~ g e")
 | \`mul()\` | Multiply (RAW STRINGS ONLY) | \`"1 2 3".mul(2)\` |
 | \`div()\` | Divide (RAW STRINGS ONLY) | \`"4 8 12".div(2)\` |
 | \`trans()\` | Transpose semitones (WORKS ON ALL) | \`.trans(-12)\` (down octave) |
-| \`superimpose()\` | Layer with transformation | \`.superimpose(x=>x.trans(7))\` |
+| \`layer()\` | Layer with transformation | \`.layer(x=>x.s("a"), x=>x.trans(7).s("a"))\` |
 | \`echo()\` | Delay with feedback | \`.echo(4, 1/8, 0.5)\` |
 | \`echoWith()\` | Delay with transform | \`.echoWith(3, 1/8, x=>x.trans(3))\` |
 
