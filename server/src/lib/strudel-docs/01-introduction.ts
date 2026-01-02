@@ -1,64 +1,7 @@
 export const SECTION_INTRODUCTION = `
 # Strudel Pattern Generation Reference
 
-## Introduction$: s("bd*4").decay(0.05).sustain(0)
-
-$: n("0 2 4 [2 0]").s("jazz").jux(rev)
-
-.color("red")._spectrum()
-
-
-
-$: note("<c2*4!3 [c2 eb2 g2 bb2]>").s("sawtooth").lpf(400)
-
-
-
-.color("green")._scope()
-
-
-
-$: stack(
-
-
-
-  note("d ~ [f a] ~ d4 c4")/2,        // Over 2 cycles
-
-
-
-  note("[g bb] d4 f")/3,          // Over 3 cycles
-
-
-
-  s("bd(3,8)"),           // Euclidean 3 in 8
-
-
-
-  s("hh(5,8)")            // Euclidean 5 in 8
-
-
-
-).color("yellow")._scope()
-
-
-
-$: note("<c3*4!3 [c3 eb3 g3 bb3]>").struct("x(5,16)").s("sawtooth")
-
-  .lpf(sine.range(100, 700).slow(2)).lpq(10).distort(0.8).gain(1)
-
-  .pan(sine.range(0, 1).slow(4)).orbit(1).color("cyan")._spectrum()
-
-
-
-$: note("<g3*4!3 [g3 bb3 d3 f3]>").struct("x(9,16)").s("sawtooth")
-
-  .lpf(sine.range(100, 700).slow(2)).lpq(10).distort(0.8).gain(1)
-
-  .pan(sine.range(1, 0).slow(4)).orbit(2).color("magenta")._spectrum()
-
-
-
-$: n("0 ~ [2 4] ~ 7 [<[9 7]!3 [5 9]>] ~ <4!3 5>").scale("C:minor").color("violet")._pianoroll()
-
+## Introduction
 Strudel implements the TidalCycles algorithmic pattern language in JavaScript. It allows you to create music through code using patterns, mini-notation syntax, and function chaining.
 
 ### Basic Syntax Examples

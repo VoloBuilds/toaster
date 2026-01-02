@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '../components/ui/button'
 import { Textarea } from '../components/ui/textarea'
-import { Loader2, Mic, MicOff, Play, Square, Share2, Check, Undo, Redo } from 'lucide-react'
+import { Loader2, Mic, MicOff, Play, Square, Share2, Check, Undo, Redo, AlertTriangle, Wrench } from 'lucide-react'
 import StrudelEditor from '../components/StrudelEditor'
 import HalVisualization from '../components/HalVisualization'
 import ClearButton from '../components/ClearButton'
@@ -33,6 +33,8 @@ const HomePage = () => {
   const [isSharing, setIsSharing] = useState(false)
   const [shareSuccess, setShareSuccess] = useState(false)
   const [showCopiedMessage, setShowCopiedMessage] = useState(false)
+  const [strudelError, setStrudelError] = useState<string | null>(null)
+  const [isFixing, setIsFixing] = useState(false)
   const editorPlayRef = useRef<(() => void) | null>(null)
   const editorStopRef = useRef<(() => void) | null>(null)
   const getCurrentCodeRef = useRef<(() => string) | null>(null)
@@ -45,6 +47,7 @@ const HomePage = () => {
   const isListeningRef = useRef<boolean>(false)
   const audioAnalyserRef = useRef<AnalyserNode | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const errorDismissTimerRef = useRef<number | null>(null)
   
   const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform)
   const isAndroid = /Android/.test(navigator.userAgent)
@@ -175,6 +178,31 @@ const HomePage = () => {
   const handleInitStateChange = useCallback((isInitialized: boolean, isInitializing: boolean) => {
     setIsEditorInitialized(isInitialized)
     setIsEditorInitializing(isInitializing)
+  }, [])
+
+  const handleStrudelError = useCallback((error: string) => {
+    setStrudelError(error)
+    
+    // Clear any existing dismiss timer
+    if (errorDismissTimerRef.current) {
+      clearTimeout(errorDismissTimerRef.current)
+    }
+    
+    // Auto-dismiss after 15 seconds
+    errorDismissTimerRef.current = setTimeout(() => {
+      setStrudelError(null)
+    }, 15000)
+  }, [])
+
+  const handleCodeEvaluated = useCallback(() => {
+    // Code was successfully evaluated - clear any errors from previous code
+    setStrudelError(null)
+    
+    // Also clear any pending dismiss timer
+    if (errorDismissTimerRef.current) {
+      clearTimeout(errorDismissTimerRef.current)
+      errorDismissTimerRef.current = null
+    }
   }, [])
 
   useEffect(() => {
@@ -336,6 +364,7 @@ const HomePage = () => {
       const data = await response.json()
       setStrudelCode(data.code || '')
       setPrompt('')
+      setStrudelError(null) // Clear any existing error on successful generation
       
       setTimeout(() => {
         if (editorPlayRef.current) {
@@ -374,6 +403,7 @@ const HomePage = () => {
       setStrudelCode(data.code || '')
       currentTranscriptRef.current = ''
       setPrompt('')
+      setStrudelError(null) // Clear any existing error on successful generation
       
       setTimeout(() => {
         if (editorPlayRef.current) {
@@ -421,6 +451,66 @@ const HomePage = () => {
       console.error('Failed to share:', error)
     } finally {
       setIsSharing(false)
+    }
+  }
+
+  const handleFixError = async () => {
+    if (!strudelError) return
+
+    setIsFixing(true)
+    
+    try {
+      const currentCode = getCurrentCodeRef.current ? getCurrentCodeRef.current() : strudelCode
+      
+      const fixPrompt = `CRITICAL ERROR - MUST FIX: "${strudelError}"
+
+The pattern has a runtime error. You MUST modify the code to fix it.
+Think CAREFULLY about the full instructions (and all the examples of "WRONG" usage) to fix this error.
+
+IMPORTANT: Returning the same code is NOT acceptable. You MUST modify something to fix the error.
+
+Return ONLY the fixed Strudel code, no explanations.`
+      
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8787'}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          prompt: fixPrompt,
+          currentPattern: currentCode
+        }),
+      })
+
+      const data = await response.json()
+      
+      // Only update if we got actual code back
+      if (data.code && data.code.trim().length > 0) {
+        // Check if the AI returned the same code (no actual fix)
+        const isSameCode = data.code.trim() === currentCode.trim()
+
+        if (isSameCode) {
+          // AI couldn't fix it - update error message to indicate this
+          setStrudelError(`${strudelError} (AI couldn't auto-fix this)`)
+        } else {
+          // AI returned different code - update the editor
+          setStrudelCode(data.code)
+          setStrudelError(null) // Clear error after fix
+          // Errors will be cleared when onCodeEvaluated fires on successful eval
+          
+          setTimeout(() => {
+            if (editorPlayRef.current) {
+              editorPlayRef.current()
+            }
+          }, 500)
+        }
+      } else {
+        console.error('Fix response did not contain code:', data)
+      }
+    } catch (error) {
+      console.error('Failed to fix pattern:', error)
+    } finally {
+      setIsFixing(false)
     }
   }
 
@@ -503,6 +593,8 @@ const HomePage = () => {
               onUndoReady={handleUndoReady}
               onRedoReady={handleRedoReady}
               onClearReady={handleClearReady}
+              onStrudelError={handleStrudelError}
+              onCodeEvaluated={handleCodeEvaluated}
             />
           </div>
         </div>
@@ -517,6 +609,31 @@ const HomePage = () => {
           <div className="max-w-6xl mx-auto">
             {/* Control buttons - Above input on mobile, integrated on desktop */}
             <div className="flex flex-col gap-2 mb-2 px-3 sm:px-0">
+              {/* Strudel Error Display */}
+              {strudelError && (
+                <div className="flex items-center gap-2 bg-amber-950/90 border border-amber-700/50 rounded-lg px-3 py-2 pointer-events-auto animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                  <span className="text-amber-200 font-mono text-xs sm:text-sm flex-1 truncate">
+                    {strudelError}
+                  </span>
+                  <Button
+                    onClick={handleFixError}
+                    onMouseDown={(e) => e.preventDefault()}
+                    disabled={isFixing}
+                    className="flex-shrink-0 rounded-md px-3 py-1 h-7 text-xs bg-amber-700/50 hover:bg-amber-600/50 border border-amber-600/50 text-amber-100"
+                  >
+                    {isFixing ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <>
+                        <Wrench className="h-3 w-3 mr-1" />
+                        Fix
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+              
               {/* URL Copied message */}
               {showCopiedMessage && (
                 <div className="text-xs font-mono text-green-400 text-right animate-in fade-in slide-in-from-bottom-2 duration-300 pointer-events-none">

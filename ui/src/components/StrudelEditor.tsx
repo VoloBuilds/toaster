@@ -23,9 +23,11 @@ interface StrudelEditorProps {
   onUndoReady?: (undoFn: () => void) => void
   onRedoReady?: (redoFn: () => void) => void
   onClearReady?: (clearFn: () => void) => void
+  onStrudelError?: (error: string) => void
+  onCodeEvaluated?: () => void
 }
 
-const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, onGetCurrentCode, onPlayStateChange, onAnalyserReady, onInitStateChange, onUndoReady, onRedoReady, onClearReady }: StrudelEditorProps) => {
+const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, onGetCurrentCode, onPlayStateChange, onAnalyserReady, onInitStateChange, onUndoReady, onRedoReady, onClearReady, onStrudelError, onCodeEvaluated }: StrudelEditorProps) => {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
   const [isInitializing, setIsInitializing] = useState(false)
@@ -44,6 +46,7 @@ const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, on
   } | null>(null)
   const initializationRef = useRef(false) // Prevent double initialization
   const analyserRef = useRef<AnalyserNode | null>(null)
+  const strudelLogListenerRef = useRef<((e: Event) => void) | null>(null)
 
   useEffect(() => {
     // Initialize StrudelMirror when component mounts - only once
@@ -320,6 +323,42 @@ const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, on
               }
             })
           }
+          
+          // Listen for Strudel log events (warnings/errors/code updates)
+          // Strudel dispatches 'strudel.log' CustomEvents on document
+          const handleStrudelLog = (e: Event) => {
+            const customEvent = e as CustomEvent
+            const message = customEvent.detail?.message || customEvent.detail
+            if (typeof message !== 'string') return
+            
+            // Check for code evaluation success
+            if (message.startsWith('[eval] code updated')) {
+              onCodeEvaluated?.()
+              return
+            }
+            
+            // Show warnings and any errors to user
+            if (onStrudelError) {
+              const isWarning = message.startsWith('[warn]')
+              const isError = message.includes('error:')
+              
+              if (!isWarning && !isError) {
+                return
+              }
+              
+              // Clean up the message - remove common prefixes
+              const cleanMessage = message
+                .replace(/^\[warn\]:\s*/i, '')
+                .replace(/^\[\w+\]\s*error:\s*/i, '') // Matches [eval] error:, [setTrigger] error:, etc.
+                .trim()
+              if (cleanMessage) {
+                onStrudelError(cleanMessage)
+              }
+            }
+          }
+          
+          strudelLogListenerRef.current = handleStrudelLog
+          document.addEventListener('strudel.log', handleStrudelLog)
         } catch (err) {
           console.error('Failed to initialize Strudel:', err)
           setError('Failed to initialize Strudel editor')
@@ -341,6 +380,11 @@ const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, on
         } catch (err) {
           console.warn('Error during cleanup:', err)
         }
+      }
+      // Clean up strudel.log event listener
+      if (strudelLogListenerRef.current) {
+        document.removeEventListener('strudel.log', strudelLogListenerRef.current)
+        strudelLogListenerRef.current = null
       }
       // Don't reset initializationRef to prevent StrictMode double-init
     }

@@ -93,6 +93,10 @@ Understanding the difference between notes and sounds is fundamental to avoiding
    
    note("c e g")
      .juxBy(0.5, x => x.add(7))  // ❌ ERROR - Can't do arithmetic on control patterns from note()!
+   
+   // ✅ Use .trans() instead for control patterns:
+   note("c e g")
+     .superimpose(x => x.trans(7))  // ✅ .trans() works on control patterns!
    \`\`\`
 
 **When to use each:**

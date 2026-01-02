@@ -115,40 +115,75 @@ note("d [f a] ~ c4").grow(4)      // Grow pattern
 
 ### Value Modifiers
 
-**🚨 CRITICAL: Raw Strings vs n() with .scale()**
+**🚨 CRITICAL: Control Patterns vs Raw Strings**
 
-Before using value modifiers with scales, understand this key distinction:
+Understanding when arithmetic works is essential:
 
-**✅ Raw string patterns - NEED .note() after .scale():**
+**Control patterns** (arithmetic FAILS on these):
+- \`n("0 2 4")\` - n() creates control patterns immediately
+- \`note("c e g")\` - note() creates control patterns immediately
+- \`n("0 2 4").scale("C:minor")\` - already a control pattern
+
+**Raw strings** (arithmetic WORKS on these):
+- \`"0 2 4"\` - just a string, not yet a pattern
+- \`"c e g"\` - just a string
+
+**✅ Raw string patterns - arithmetic works, then convert:**
 \`\`\`js
 "[0 2 4 7]".scale("C:minor").note().s("piano")  // ✅ Raw string needs .note()
 "0 2 4".add(7).scale("D:minor").note().s("piano")  // ✅ Arithmetic → scale → note
 \`\`\`
 
-**✅ n() patterns - NO .note() after .scale():**
+**✅ n() patterns - NO arithmetic, NO .note() after .scale():**
 \`\`\`js
-n("[0 2 4 7]").scale("C:minor").s("piano")  // ✅ n() already creates notes!
-n("0 2 4").add(7).scale("D:minor").s("piano")  // ✅ NO .note() needed
+n("[0 2 4 7]").scale("C:minor").s("piano")  // ✅ n() creates control patterns
 \`\`\`
 
-**❌ WRONG - Adding .note() after n().scale():**
+**❌ WRONG - Arithmetic on n() or note():**
 \`\`\`js
+n("0 2 4").add(7).scale("D:minor")  // ❌ ERROR - can't do arithmetic on n()!
 n("[0 2 4 7]").scale("C:minor").note()  // ❌ ERROR - n().scale() already made notes!
-n("0 2 4").add(7).scale("D:minor").note()  // ❌ ERROR - don't add .note()
+note("c e g").add(7)  // ❌ ERROR - can't do arithmetic on note()!
 \`\`\`
 
-**Why:** \`n().scale()\` creates control patterns automatically. Raw strings need \`.note()\` to convert to control patterns.
+**✅ Use .trans() for transposing control patterns:**
+\`\`\`js
+n("0 2 4").scale("C:minor").trans(12).s("piano")  // ✅ .trans() works on control patterns!
+note("c e g").trans(7).s("piano")  // ✅ .trans() works!
+n("0 2 4").scale("C:minor").superimpose(x=>x.trans(12)).s("piano")  // ✅ .trans() in callbacks!
+\`\`\`
+
+**Why:** \`n()\` and \`note()\` create **control patterns**. Arithmetic (.add, .mul, .sub, .div) only works on raw strings. Use \`.trans()\` to transpose control patterns by semitones.
 
 ---
 
-**Add:**
-"d f a d4".add("<0 2 4>").note()  // Transpose by pattern
-"[0 2] ~ 4 7 ~ [4 2 0]".add("<0 3 7 5>").scale("G:mixolydian").note()  // Raw string needs .note()
-n("[0 2] ~ 4 7 ~ [4 2 0]").add("<0 3 7 5>").scale("G:mixolydian")  // n() does NOT need .note()
+**Add (raw strings only):**
+"d f a d4".add("<0 2 4>").note()  // Transpose by pattern (raw string)
+"[0 2] ~ 4 7 ~ [4 2 0]".add("<0 3 7 5>").scale("G:mixolydian").note()  // Raw string → add → scale → note
+// ⚠️ n().add() does NOT work - use raw strings or .trans() instead!
 
-**Multiply, subtract, divide:**
+**Trans (transpose semitones) - WORKS ON CONTROL PATTERNS:**
+This is the way to transpose n() and note() patterns!
+
+note("c3 e3 g3 c4").trans(12)   // Shift up one octave
+note("c4 e4 g4").trans(-12)    // Drop down one octave
+note("c3 d3 e3").trans(7)      // Shift up a perfect fifth
+note("a4 b4 c5").trans("<0 -2 -4>")  // Pattern the transposition
+n("0 2 4").scale("C:minor").trans(12)  // ✅ .trans() works on n().scale()!
+
+// Useful for octave layering
+note("c3 e3 g3").layer(
+  x => x,              // Original
+  x => x.trans(12)     // Octave up - .trans() works in callbacks!
+)
+
+// Superimpose with .trans() on control patterns
+n("0 2 4").scale("C:minor").superimpose(x=>x.trans(12)).s("piano")  // ✅ Octave harmony
+note("c3 e3 g3").superimpose(x=>x.trans(7)).s("piano")  // ✅ Fifth harmony
+
+**Multiply, subtract, divide (raw strings only):**
 "1 2 3".mul(2).scale("D:minor").note()      // Raw string - multiply scale degrees, then .note()
-n("1 2 3").mul(2).scale("D:minor")          // n() version - NO .note() needed
+// ⚠️ n().mul() does NOT work - use raw strings instead!
 "1000 2000 3000".div(5).freq()   // divide frequencies by 5
 "100 200 300".mul(2).freq()   // multiply frequencies by 2
 "10 20 30".div(2).scale("E:minor").note()   // Divide scale degrees (confusing and very rare)
@@ -165,10 +200,9 @@ Plays the original pattern plus a transformed version simultaneously.
   .superimpose(x=>x.add(2))  // Add harmony (thirds)
   .scale('C:minor').note()  // Raw string needs .note()
 
-// ✅ CORRECT - n(): superimpose → scale (NO .note())
-n("<0 2 4 6 ~ 4 ~ 2 0!3 ~!5>*8")
-  .superimpose(x=>x.add(2))  // Add harmony (thirds)
-  .scale('C:minor')  // n() does NOT need .note()
+// ⚠️ n() with superimpose(x=>x.add()) does NOT work!
+// n() creates control patterns - can't do arithmetic inside superimpose callbacks
+// Use raw strings instead (shown above)
 
 "c2 eb2 g2 bb2"
   .superimpose(x=>x.add(0.05))  // Detune for chorus
@@ -189,10 +223,8 @@ n("0 2 4").scale("C:minor").superimpose(x=>x.add(7))  // Won't work - already co
   .superimpose(x=>x.add(2))  // Add thirds
   .scale("E:minor").note()  // Raw string needs .note()
 
-// Layering harmonies (n() version)
-n("[0 2] ~ 4 7 ~ [4 2]")
-  .superimpose(x=>x.add(2))  // Add thirds
-  .scale("E:minor")  // n() does NOT need .note()
+// ⚠️ n() with superimpose does NOT work - use raw strings above instead!
+// n() creates control patterns, and superimpose callbacks can't do arithmetic on them
 
 // Creating thickness with octaves
 "0 [2 4] ~ 6@2 [5 4]"
@@ -218,7 +250,7 @@ s("cp").echo(4, 1/16, 0.6)  // Clap with trailing echoes
 
 **Off (copy and transform):**
 "[0 2] 4 ~ 7".off(1/16, x=>x.add(7)).scale("D:minor").note()  // Raw string: needs .note()
-n("[0 2] 4 ~ 7").off(1/16, x=>x.add(7)).scale("D:minor")  // n() version: NO .note()
+// ⚠️ n() with .off(x=>x.add()) does NOT work - use raw strings instead
 
 Can nest for complex patterns:
 s("bd sd").off(2/16, x=>x.speed(1.5)
@@ -289,7 +321,7 @@ s("bd sd").someCycles(rev)         // 50% of cycles
 
 **Chunk:**
 "[0 2 4] ~ 7 [9 7 4]".chunk(4, x=>x.add(7)).scale("D:minor").note()  // Raw string needs .note()
-n("[0 2 4] ~ 7 [9 7 4]").chunk(4, x=>x.add(7)).scale("D:minor")  // n() does NOT need .note()
+// ⚠️ n() with .chunk(x=>x.add()) does NOT work - use raw strings instead
 "0 [2 4] ~ 6 [7 6]".chunkBack(4, x=>x.add(7)).scale("A:minor").note()  // Raw string needs .note()
 
 **Degradation:** (RARELY used)
@@ -465,13 +497,14 @@ note("a!2 ~ [c# e] a4 ~ g e")
 
 | Function | Description | Example |
 |----------|-------------|---------|
-| \`add()\` | Add value | \`.add(2)\` |
-| \`sub()\` | Subtract | \`.sub(3)\` |
-| \`mul()\` | Multiply | \`.mul(2)\` |
-| \`div()\` | Divide | \`.div(2)\` |
-| \`superimpose()\` | Layer with transformation | \`.superimpose(x=>x.add(7))\` |
+| \`add()\` | Add value (RAW STRINGS ONLY) | \`"0 2 4".add(2)\` |
+| \`sub()\` | Subtract (RAW STRINGS ONLY) | \`"3 5 7".sub(1)\` |
+| \`mul()\` | Multiply (RAW STRINGS ONLY) | \`"1 2 3".mul(2)\` |
+| \`div()\` | Divide (RAW STRINGS ONLY) | \`"4 8 12".div(2)\` |
+| \`trans()\` | Transpose semitones (WORKS ON ALL) | \`.trans(-12)\` (down octave) |
+| \`superimpose()\` | Layer with transformation | \`.superimpose(x=>x.trans(7))\` |
 | \`echo()\` | Delay with feedback | \`.echo(4, 1/8, 0.5)\` |
-| \`echoWith()\` | Delay with transform | \`.echoWith(3, 1/8, x=>x.add(3))\` |
+| \`echoWith()\` | Delay with transform | \`.echoWith(3, 1/8, x=>x.trans(3))\` |
 
 #### Conditional Modifiers
 

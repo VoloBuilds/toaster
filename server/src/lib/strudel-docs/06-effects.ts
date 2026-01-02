@@ -171,6 +171,8 @@ note("e g b@2 d4 [b g] e4").s("sawtooth").juxBy(0.5, fast(2))  // Right channel 
 
 ### Waveshaping & Distortion
 
+**Note:** These effects require AudioWorklet support and may not work in all browser implementations. If you encounter errors, these effects may not be available in your environment.
+
 **Distortion:**
 s("bd").distort(.8)  // Waveshaping distortion
 note("<c#!4 ab!2 f!2> ab c4@2 ~ f4 eb c4 bb").s("sawtooth").distort(0.5).lpf(2000)
@@ -246,6 +248,8 @@ s("bd sd").roomlp(5000)  // Reverb low-pass filter
 s("bd sd").roomdim(0.5)  // Room dimension/character
 
 **Phaser:**
+**Note:** Phaser effects require AudioWorklet support and may not work in all browser implementations. If you encounter errors, phaser may not be available in your environment.
+
 note("f [ab c4] ~ f4 [eb c4]").phaser(2)          // Phaser speed - F minor
 note("e [g b] ~ e4 ~ [d4 b]").phaserdepth(0.5)   // Phaser depth - E minor
 note("g [bb d4] ~ g4 [f d4]").phasercenter(1000) // Center frequency - G minor
@@ -260,13 +264,41 @@ note("c3").s("sine")
   .tremolophase(0)    // Phase offset
   .tremoloshape(0)    // Waveform shape (0=sine, 1=saw, 2=square)
 
-**Ducking (sidechain):**
-THIS IS A REALLY COOL EFFECT AND YOU SHOULD USE IT A LOT!
-// Bass ducks when kick plays - note how we "orbit(1)" the kick and then "duckorbit(1)" the other instruments with a duckattack and duckdepth.
-$: s("bd*4").orbit(1)
+**Ducking (sidechain compression):**
+THIS IS A REALLY COOL EFFECT! Creates that classic pumping/breathing effect heard in electronic music.
+The idea: one sound (like a kick) controls the volume of another sound (like a bass or pad).
+
+**How it works:**
+1. Put your "trigger" sound (e.g. kick) on an orbit
+2. Other sounds use \`duckorbit\` to listen to that orbit and duck when it plays
+
+**Ducking parameters:**
+- \`duckorbit(n)\` - Which orbit to duck FROM (listen to)
+- \`duckdepth(d)\` - How much to duck (0-1, where 1 = full silence)
+- \`duckattack(t)\` - Time to reach minimum volume (default 0.003s to avoid clicks)
+
+**Basic example - bass ducks to kick:**
+$: s("bd*4").orbit(1)  // Kick on orbit 1 (the trigger)
 $: note("c2*8").s("sawtooth").lpf(400)
-   .duckorbit(1).duckattack(0.01).duckdepth(0.8)
+   .duckorbit(1)        // Listen to orbit 1
+   .duckdepth(0.8)      // Duck to 20% volume
+   .duckattack(0.003)   // Quick attack (avoid clicks)
+   .orbit(2)            // This sound is on orbit 2
+
+**Pumping pad effect:**
+$: s("bd*4").orbit(1)
+$: note("<c3 eb3 g3 bb3>").s("supersaw").lpf(2000).room(0.3)
+   .duckorbit(1).duckdepth(1).duckattack(0.01)
    .orbit(2)
+
+**Multi-orbit ducking with colon notation:**
+You can duck multiple orbits with different settings using colons!
+$: s("bd:4!4").beat("0,4,8,11,14",16).lpf(800).orbit(1)
+$: note("c2*8").s("sawtooth").lpf(400).gain(1.3).orbit(2)  // Bass
+$: s("hh*16").delay(0.25).orbit(3)                          // Hi-hats
+$: s("~").duckorbit("2:3")           // Duck orbits 2 AND 3
+   .duckattack("0.003:0.1")          // Bass: fast attack, Hats: slow attack
+   .duckdepth("1:0.3")               // Bass: full duck, Hats: gentle duck
 
 ### Clip/Legato
 
@@ -357,7 +389,9 @@ s("bd sd hh oh").n(irand(4).segment(8))  // ✓ n needs discrete values
 | \`roomsize()\` | Reverb size | \`.roomsize(5)\` |
 | \`phaser()\` | Phaser speed | \`.phaser(2)\` |
 | \`tremolo()\` | Tremolo freq | \`.tremolo(8)\` |
-| \`duckorbit()\` | Duck from orbit | \`.duckorbit(2)\` |
+| \`duckorbit()\` | Duck from orbit | \`.duckorbit(1)\` |
+| \`duckdepth()\` | Duck amount (0-1) | \`.duckdepth(0.8)\` |
+| \`duckattack()\` | Duck attack time | \`.duckattack(0.003)\` |
 | \`clip()/legato()\` | Note duration | \`.clip(0.8)\` |
 
 ### Signal Functions Reference

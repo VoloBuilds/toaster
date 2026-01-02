@@ -42,7 +42,6 @@ generateRoute.post('/', async (c) => {
 
     return c.json({
       code: strudelCode,
-      prompt,
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
@@ -84,17 +83,24 @@ ${currentPattern}
 
 User request: ${prompt}
 
-IMPORTANT: Return the FULL updated pattern based on the user's request. If they ask to "add" something, keep all existing tracks and add new ones. If they ask to "change" or "modify" something specific, make that change but keep everything else. Always return the complete, updated pattern code - never just a fragment or a completely new pattern unless explicitly requested.`
+IMPORTANT: Return the FULL updated pattern based on the user's request.
+- If they ask to "add" something, keep all existing tracks and add new ones.
+- If they ask to "change" or "modify" something specific, make that change but keep everything else.
+- If they report an ERROR or WARNING, you MUST analyze the code and fix the issue. Do NOT return the same pattern - identify what's causing the error and modify the code to resolve it.
+- Always return the complete, updated pattern code - never just a fragment.
+- Only return raw Strudel code, no explanations or markdown.`
   } else {
-    userMessage = `Generate a new Strudel pattern for: ${prompt}`
+    userMessage = `Generate a new Strudel pattern for: ${prompt}
+
+Only return raw Strudel code, no explanations or markdown.`
   }
 
   const completion = await openai.chat.completions.create({
     //TODO: Not sure why the env.OPENROUTER_MODEL is getting ignored
     // model: 'x-ai/grok-4-fast',
     // model: env.OPENROUTER_MODEL || 'google/gemini-2.5-flash',
-    model: 'google/gemini-3-flash-preview',
-    // model: 'google/gemini-2.5-flash-lite-preview-09-2025',
+    // model: 'google/gemini-3-flash-preview',
+    model: 'google/gemini-2.5-flash-preview-09-2025',
     // model: 'openai/gpt-4.1-mini',
     messages: [
       { role: 'system', content: systemPrompt },

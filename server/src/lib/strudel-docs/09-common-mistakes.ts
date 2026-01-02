@@ -36,16 +36,26 @@ n("0 2 4").scale("C:minor").add(7)  // Can't do arithmetic after n().scale()!
 n("0 2 4").scale("C:minor").superimpose(x => x.add(7))  // Same error!
 \`\`\`
 
-**✅ CORRECT - Arithmetic BEFORE .note() or .scale():**
+**✅ CORRECT - Arithmetic on RAW STRINGS only:**
 \`\`\`js
-"0 2 4".add(7).scale("C:minor").note().s("piano")  // Arithmetic BEFORE conversion
-"0 2 4".superimpose(x=>x.add(7)).scale("C:minor").note().s("piano")  // Transform BEFORE
-"c e g".superimpose(x=>x.add(7)).note().s("piano")  // Works with letter names too
+"0 2 4".add(7).scale("C:minor").note().s("piano")  // Arithmetic on raw string → scale → note
+"0 2 4".superimpose(x=>x.add(7)).scale("C:minor").note().s("piano")  // Transform raw string
+"c e g".superimpose(x=>x.add(7)).note().s("piano")  // Works with letter names in raw strings
 \`\`\`
 
-**Rule:** Arithmetic (.add, .superimpose, .mul, .div) must come BEFORE .note() or .scale()
+**✅ CORRECT - Use .trans() for control patterns:**
+\`\`\`js
+note("c e g").trans(7).s("piano")  // ✅ .trans() works on note()!
+n("0 2 4").scale("C:minor").trans(12).s("piano")  // ✅ .trans() works on n().scale()!
+n("0 2 4").scale("C:minor").superimpose(x=>x.trans(7)).s("piano")  // ✅ .trans() in callbacks!
+\`\`\`
 
-**Why:** \`note()\` and \`n().scale()\` create **control patterns**. Once you have a control pattern, arithmetic operations fail with "Can't do arithmetic on control pattern".
+**Rules:**
+- Arithmetic (.add, .mul, .div, .sub) only works on RAW STRINGS
+- n() and note() create control patterns immediately - arithmetic fails
+- Use .trans() to transpose control patterns by semitones
+
+**Why:** \`note()\` and \`n()\` create **control patterns**. Arithmetic operations fail with "Can't do arithmetic on control pattern". Use \`.trans()\` instead - it's designed for control patterns.
 
 ### Chord Notation Errors
 
@@ -387,19 +397,21 @@ n("[0 2 4 6]").add("<0 2 4>").scale("C:major")  // Error: Can't do arithmetic on
   .scale("C:major").note()  // Then scale and convert
   .s("triangle")
 
-n("[0 2 4 6]")
-  .superimpose(x=>x.add(2))
-  .scale("F:lydian")  // NO .note() - n() already creates notes!
+"[0 2 4 6]"
+  .superimpose(x=>x.add(2))  // Arithmetic works on raw strings
+  .scale("F:lydian")
+  .note()  // Raw strings need .note()
   .s("piano")
 
 **Why:** 
-- **\`note()\` with letter names creates control patterns immediately** - arithmetic stops working
-- **\`n().scale()\` creates control patterns** - arithmetic stops working after \`.scale()\`
-- Arithmetic transformations like \`.add()\`, \`.superimpose()\`, \`.mul()\` need raw string patterns or \`n()\` patterns **before** conversion
+- **\`note()\` creates control patterns immediately** - arithmetic stops working
+- **\`n()\` creates control patterns immediately** - arithmetic stops working (even before .scale())
+- Arithmetic transformations like \`.add()\`, \`.mul()\`, \`.div()\` ONLY work on raw string patterns
+- Use \`.trans()\` to transpose control patterns - it works everywhere!
 - Raw string patterns need \`.note()\` to convert to notes
-- Apply transformations in this order: pattern → add/superimpose/transform → scale → note (only if raw string) → sound
+- Apply transformations in this order: raw string → add/superimpose/transform → scale → note → sound
 
-**Key insight:** Both \`note("[f#5 d5] [b4 g4]")\` and \`n("[0 2 4 6]").scale()\` create **control patterns**. Once you have a control pattern, arithmetic operations fail with "Can't do arithmetic on control pattern".
+**Key insight:** \`note()\`, \`n()\`, and \`n().scale()\` all create **control patterns**. Once you have a control pattern, arithmetic operations fail with "Can't do arithmetic on control pattern". Use \`.trans()\` instead!
 
 ### Quick Checklist
 
@@ -418,7 +430,8 @@ Before generating patterns, check:
 - [ ] Avoiding \`.arp()\` unless specifically selecting indices from stacked notes?
 - [ ] For drums: using \`setcpm()\` for tempo, Euclidean rhythms for groove, and \`<>\` for variation?
 - [ ] Creating interesting melodies with rhythmic variation, rests, passing tones, and contour (not just "0 2 4 7")?
-- [ ] Using \`.superimpose()\` BEFORE \`.note()\` or \`.s()\`, not after?
+- [ ] Using \`.superimpose(x=>x.add())\` on RAW STRINGS only, not on n() or note()?
+- [ ] Using \`.trans()\` (not .add()) to transpose n() or note() patterns?
 - [ ] NOT using \`.note()\` after \`n().scale()\` (n() already creates notes)?
 - [ ] Leveraging euclidean rhythms \`(3,8)\`, \`(5,8)\` etc. for natural, musical grooves?
 - [ ] When commenting out tracks: using \`//$:\` (not \`$: //\`) to silence a track?
