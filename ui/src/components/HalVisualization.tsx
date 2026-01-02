@@ -27,6 +27,15 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
     maxLife: number
     size: number
   }>>([])
+  const voiceParticlesRef = useRef<Array<{
+    x: number
+    y: number
+    vx: number
+    vy: number
+    life: number
+    maxLife: number
+    size: number
+  }>>([])
   
 
   // Initialize audio context and analyser for music playback
@@ -87,7 +96,7 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
     }
   }, [isListening])
 
-  // Particle system
+  // Particle system for music
   const createParticles = (x: number, y: number, count: number, energy: number) => {
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5
@@ -104,6 +113,25 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
     }
   }
 
+  // Separate voice particle system - red bubbles in random directions
+  const createVoiceParticles = (x: number, y: number, count: number, energy: number) => {
+    for (let i = 0; i < count; i++) {
+      // Random angle in full circle
+      const angle = Math.random() * Math.PI * 2
+      const speed = 1 + energy * 3
+      
+      voiceParticlesRef.current.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        maxLife: 60 + Math.random() * 40,
+        size: 4 + energy * 4
+      })
+    }
+  }
+
   const updateParticles = () => {
     particlesRef.current = particlesRef.current.filter(particle => {
       particle.x += particle.vx
@@ -111,6 +139,18 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
       particle.life++
       particle.vx *= 0.99
       particle.vy *= 0.99
+      return particle.life < particle.maxLife
+    })
+  }
+
+  const updateVoiceParticles = () => {
+    voiceParticlesRef.current = voiceParticlesRef.current.filter(particle => {
+      particle.x += particle.vx
+      particle.y += particle.vy
+      particle.life++
+      // Slightly slower decay for voice particles to travel further
+      particle.vx *= 0.985
+      particle.vy *= 0.985
       return particle.life < particle.maxLife
     })
   }
@@ -199,10 +239,15 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
         }
         voiceEnergy = tempVoiceEnergy / voiceData.length
         
-        // Create particles on voice input
-        if (voiceEnergy > 30) {
-          if (Math.random() > 0.7) {
-            createParticles(centerX, centerY, 3, voiceEnergy / 255)
+        // Create voice particles - separate from music particles
+        // Lower threshold and more frequent spawning for better responsiveness
+        if (voiceEnergy > 20) {
+          // Spawn rate scales with voice energy
+          const spawnChance = 0.3 + (voiceEnergy / 255) * 0.5
+          if (Math.random() < spawnChance) {
+            // More particles when louder
+            const particleCount = Math.floor(3 + (voiceEnergy / 255) * 6)
+            createVoiceParticles(centerX, centerY, particleCount, voiceEnergy / 255)
           }
         }
       }
@@ -272,11 +317,16 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
       }
 
       // Draw voice reactivity rings
-      if (isListening && voiceEnergy > 0.1) {
+      // Lower threshold (0.02) ensures rings appear during music playback
+      // Rings positioned just outside eye edge, scaling with it
+      if (isListening && voiceEnergy > 0.02) {
+        // Position rings just outside the eye edge, scaling with the eye
+        const ringStart = size * 1.08
+        const ringSpacing = size * 0.1
+        
         for (let i = 0; i < 4; i++) {
-          // Scale rings further out from orb, especially when audio is playing
-          const ringSize = size * (1.4 + i * 0.15)
-          const alpha = voiceEnergy * (1 - i * 0.2)
+          const ringSize = ringStart + i * ringSpacing
+          const alpha = Math.min(0.9, voiceEnergy * 3) * (1 - i * 0.2)
           
           ctx.strokeStyle = `rgba(147, 51, 234, ${alpha})`
           ctx.lineWidth = 3
@@ -318,9 +368,19 @@ const HalVisualization = ({ isPlaying, isListening, audioAnalyser }: HalVisualiz
       ctx.arc(highlightX, highlightY, highlightSize, 0, Math.PI * 2)
       ctx.fill()
 
-      // Update and draw particles
+      // Update and draw music particles (red)
       updateParticles()
       particlesRef.current.forEach(particle => {
+        const life = 1 - particle.life / particle.maxLife
+        ctx.fillStyle = `rgba(239, 68, 68, ${life * 0.8})`
+        ctx.beginPath()
+        ctx.arc(particle.x, particle.y, particle.size * life, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      // Update and draw voice particles (red) - completely separate from music
+      updateVoiceParticles()
+      voiceParticlesRef.current.forEach(particle => {
         const life = 1 - particle.life / particle.maxLife
         ctx.fillStyle = `rgba(239, 68, 68, ${life * 0.8})`
         ctx.beginPath()
