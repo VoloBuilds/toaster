@@ -302,14 +302,18 @@ Use \`layer()\` to create rich, wide sounds with harmonies and octaves on contro
 
 **IMPORTANT:** When detuning with \`.add(note(...))\`, you're adding **note patterns**, not doing arithmetic. This is different from \`.add(7)\` which would fail on control patterns.
 
+⚠️ **Note:** \`trans()\` only accepts **integers** (whole semitones). For fractional detuning, use \`.add(note("0,0.05"))\` instead.
+
 **Note:** \`superimpose(x=>x.add())\` works on raw strings, but \`superimpose(x=>x.trans())\` throws errors on control patterns (\`n()\` or \`note()\`). Use \`layer()\` for harmony layering on control patterns.
 
 **Chorus effect (slight detune with notes):**
 \`\`\`js
-note("<g2 bb2 d3 f2>")
-  .add(note("0,.05"))  // Detune by 5 cents - adds note pattern (special case); make sure to keep the '0,'
-  .s("sawtooth")
-  .lpf(600)
+note("c3 e3 g3").add(note("0,0.05")).s("sawtooth").lpf(800)  // Slight detune - creates width/chorus
+\`\`\`
+
+**Power chords (add the fifth - 7 semitones up):**
+\`\`\`js
+note("c3 e3 g3").add(note("0,7")).s("sawtooth").lpf(800)  // Original + fifth = power chord
 \`\`\`
 
 **Unison voices (multiple octaves with notes):**

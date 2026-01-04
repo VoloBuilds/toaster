@@ -245,3 +245,24 @@ body {
     margin-bottom: 0 !important;
   }
 }
+
+/* Keyboard console unfold animation */
+@keyframes unfold {
+  0% {
+    max-height: 0;
+    opacity: 0;
+    transform: scaleY(0.8);
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    max-height: 500px;
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.animate-unfold {
+  animation: unfold 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}

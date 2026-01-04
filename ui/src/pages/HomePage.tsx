@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '../components/ui/button'
 import { Textarea } from '../components/ui/textarea'
-import { Loader2, Mic, MicOff, Play, Square, Share2, Check, Undo, Redo, AlertTriangle, Wrench } from 'lucide-react'
+import { Loader2, Mic, MicOff, Play, Square, Share2, Check, Undo, Redo, AlertTriangle, Wrench, Piano } from 'lucide-react'
 import StrudelEditor, { CycleInfo } from '../components/StrudelEditor'
 import HalVisualization from '../components/HalVisualization'
 import ClearButton from '../components/ClearButton'
+import { SequencerConsole } from '../components/sequencer'
 // EXPERIMENTAL: Hum-to-melody feature - uncomment to enable
 // import MelodyInput from '../experimental/pitch/MelodyInput'
 
@@ -37,6 +38,7 @@ const HomePage = () => {
   const [showCopiedMessage, setShowCopiedMessage] = useState(false)
   const [strudelError, setStrudelError] = useState<string | null>(null)
   const [isFixing, setIsFixing] = useState(false)
+  const [isSequencerOpen, setIsSequencerOpen] = useState(false)
   const editorPlayRef = useRef<(() => void) | null>(null)
   const editorStopRef = useRef<(() => void) | null>(null)
   const getCurrentCodeRef = useRef<(() => string) | null>(null)
@@ -235,11 +237,28 @@ const HomePage = () => {
           }
         }
       }
+      
+      // Spacebar to toggle play/stop (when not in a text input)
+      if (e.key === ' ' || e.code === 'Space') {
+        const activeElement = document.activeElement
+        const isTextInput = activeElement?.tagName === 'TEXTAREA' || 
+                           activeElement?.tagName === 'INPUT' ||
+                           (activeElement as HTMLElement)?.isContentEditable
+        
+        if (!isTextInput) {
+          e.preventDefault()
+          if (isEditorPlaying) {
+            editorStopRef.current?.()
+          } else {
+            editorPlayRef.current?.()
+          }
+        }
+      }
     }
 
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [isMac, prompt])
+  }, [isMac, prompt, isEditorPlaying])
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -466,6 +485,13 @@ const HomePage = () => {
   //   const melodyText = `Use the melody "${notation}"`
   //   setPrompt(prev => prev ? `${prev} ${melodyText}` : melodyText)
   // }, [])
+
+  // Handler for sequencer console sending notation to prompt
+  const handleSequencerNotation = useCallback((notation: string) => {
+    if (!notation) return
+    const melodyText = `Use this pattern: ${notation}`
+    setPrompt(prev => prev ? `${prev}\n${melodyText}` : melodyText)
+  }, [])
 
   const handleFixError = async () => {
     if (!strudelError) return
@@ -701,6 +727,20 @@ Return ONLY the fixed Strudel code, no explanations.`
                 </div>
 
                 <div className="flex gap-2">
+                  {/* Sequencer Button */}
+                  <Button
+                    onClick={() => setIsSequencerOpen(prev => !prev)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    disabled={!isEditorInitialized || isEditorInitializing}
+                    className={`rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 border text-white pointer-events-auto transition-colors ${
+                      isSequencerOpen 
+                        ? 'bg-amber-700/90 hover:bg-amber-600 border-amber-500' 
+                        : 'bg-slate-800/90 hover:bg-slate-700 border-slate-600'
+                    }`}
+                  >
+                    <Piano className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Button>
+
                   <Button
                     onClick={() => editorPlayRef.current?.()}
                     onMouseDown={(e) => e.preventDefault()}
@@ -726,8 +766,22 @@ Return ONLY the fixed Strudel code, no explanations.`
               </div>
             </div>
 
-            {/* Input bar */}
-            <div className="bg-slate-950/95 border-0 sm:border border-slate-700/50 rounded-none sm:rounded-xl shadow-2xl p-3 sm:p-4 pointer-events-auto">
+            {/* Combined Sequencer Console + Input Bar Container */}
+            <div className="pointer-events-auto">
+              {/* Sequencer Console - always rendered, visibility controlled by CSS */}
+              <SequencerConsole
+                isOpen={isSequencerOpen}
+                onSendToPrompt={handleSequencerNotation}
+                getCycleInfo={getCycleInfoRef.current || undefined}
+                isStrudelPlaying={isEditorPlaying}
+              />
+
+              {/* Input bar - visually connected to sequencer when open */}
+              <div className={`bg-slate-950/95 border-0 sm:border border-slate-700/50 shadow-2xl p-3 sm:p-4 transition-all duration-300 ${
+                isSequencerOpen 
+                  ? 'rounded-none sm:rounded-b-xl sm:border-t-0' 
+                  : 'rounded-none sm:rounded-xl'
+              }`}>
               <div className="flex gap-3 items-end">
                 {/* Mic Button - Left (hidden on Android due to Web Speech API reliability issues) */}
                 {!isAndroid && (
@@ -804,6 +858,7 @@ Return ONLY the fixed Strudel code, no explanations.`
                   </Button>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </div>

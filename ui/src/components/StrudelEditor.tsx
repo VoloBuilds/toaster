@@ -50,12 +50,21 @@ const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, on
     clear: () => void
     onEval?: () => void
     editor?: any
+    // Access to internal repl scheduler (Cyclist instance)
+    repl?: {
+      scheduler?: {
+        now: () => number
+        cps: number
+        started: boolean
+        latency: number
+      }
+    }
   } | null>(null)
   const initializationRef = useRef(false) // Prevent double initialization
   const analyserRef = useRef<AnalyserNode | null>(null)
   const strudelLogListenerRef = useRef<((e: Event) => void) | null>(null)
-  const playStartTimeRef = useRef<number>(0) // Track when playback started
-  const cpsRef = useRef<number>(0.5) // Default CPS (cycles per second), typically 0.5 = 2 seconds per cycle
+  const playStartTimeRef = useRef<number>(0) // Track when playback started - fallback only
+  const cpsRef = useRef<number>(0.5) // Default CPS - fallback when scheduler not accessible
 
   useEffect(() => {
     // Initialize StrudelMirror when component mounts - only once
@@ -338,6 +347,7 @@ const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, on
           }
           
           // Expose getCycleInfo function to parent
+          // This uses Strudel's internal scheduler for accurate timing
           if (onCycleInfoReady) {
             onCycleInfoReady((): CycleInfo | null => {
               // Only return null if editor isn't initialized at all
@@ -346,15 +356,32 @@ const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, on
               }
               
               try {
-                const context = getAudioContext()
+                // Try to access scheduler directly from repl
+                // StrudelMirror wraps a repl which has a scheduler (Cyclist)
+                const scheduler = (strudelMirrorRef.current as any)?.repl?.scheduler
                 
-                // CPS is typically 0.5 (2 seconds per cycle) by default in Strudel
-                // Could potentially read from scheduler if exposed
+                if (scheduler && typeof scheduler.now === 'function') {
+                  // Use scheduler directly - this is the accurate path
+                  const cps = scheduler.cps || 0.5
+                  const cycleDurationMs = 1000 / cps
+                  
+                  if (!scheduler.started) {
+                    return { cps, phase: 0, cycleDurationMs }
+                  }
+                  
+                  // scheduler.now() returns current position in cycles (e.g., 2.75 = cycle 2, 75% through)
+                  const nowCycles = scheduler.now()
+                  const phase = nowCycles % 1
+                  
+                  return { cps, phase, cycleDurationMs }
+                }
+                
+                // Fallback: calculate from audio context time (less accurate)
+                const context = getAudioContext()
                 const cps = cpsRef.current
                 const cycleDurationMs = 1000 / cps
                 
                 // When not playing, return default timing (phase 0)
-                // This allows melody recording to work with default cycle duration
                 if (!playStartTimeRef.current) {
                   return { cps, phase: 0, cycleDurationMs }
                 }

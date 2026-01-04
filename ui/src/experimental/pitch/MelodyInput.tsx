@@ -384,7 +384,8 @@ const MelodyInput = ({ onMelodyCapture, disabled, isPlaying = false, getCycleInf
       const samples = pitchSamplesRef.current
       const cycleDurationMs = cycleDurationMsRef.current
       const elapsedMs = performance.now() - recordingStartRef.current
-      const currentCycle = Math.floor(elapsedMs / cycleDurationMs)
+      // Calculate cycle position (used for wrapping visualization)
+      void Math.floor(elapsedMs / cycleDurationMs)
 
       // Clear canvas
       ctx.fillStyle = 'rgba(15, 23, 42, 0.95)' // slate-900

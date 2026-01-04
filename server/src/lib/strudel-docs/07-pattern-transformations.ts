@@ -175,6 +175,7 @@ n("0 2 4").scale("C:minor").layer(
 
 **Trans (transpose semitones) - WORKS ON CONTROL PATTERNS:**
 This is the way to transpose n() and note() patterns!
+⚠️ **Note:** \`trans()\` only accepts **integers** (whole semitones). For fractional detuning, use \`.add(note("0,0.05"))\` instead.
 
 note("c3 e3 g3 c4").trans(12)   // Shift up one octave
 note("c4 e4 g4").trans(-12)    // Drop down one octave
@@ -219,11 +220,11 @@ n("[0 2] ~ 4 7 ~ [4 2]").scale("E:minor").layer(
   x => x.trans(7).s("square").gain(0.4)   // Fifth up
 ).lpf(1500)
 
-// ✅ Detuning for chorus/width effect
-note("c2 eb2 g2 bb2").layer(
-  x => x.s("sawtooth"),
-  x => x.trans(0.05).s("sawtooth")  // Slight detune
-).lpf(600)
+// ✅ Detuning for chorus/width effect (use .add() - trans() only takes integers!)
+note("c3 e3 g3").add(note("0,0.05")).s("sawtooth").lpf(800)  // Slight detune with add
+
+// ✅ Power chords using add (adds the fifth - 7 semitones up)
+note("c3 e3 g3").add(note("0,7")).s("sawtooth").lpf(800)
 
 **Superimpose with raw strings (works):**
 \`\`\`js
