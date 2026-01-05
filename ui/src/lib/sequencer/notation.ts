@@ -264,7 +264,7 @@ const extractNoteEvents = (slots: SlotContent[]): NoteEvent[] => {
  * Group overlapping note events into separate voices for parallel patterns
  * Notes that don't overlap can share a voice
  */
-const groupIntoVoices = (events: NoteEvent[], totalSlots: number): NoteEvent[][] => {
+const groupIntoVoices = (events: NoteEvent[]): NoteEvent[][] => {
   if (events.length === 0) return []
   
   // Sort events by start time
@@ -364,7 +364,7 @@ const slotsToNotation = (slots: SlotContent[], _mode: 'notes' | 'drum'): string 
     }
     
     // Group events into non-overlapping voices
-    const voices = groupIntoVoices(events, slots.length)
+    const voices = groupIntoVoices(events)
     
     // Generate notation for each voice
     const voiceNotations = voices.map(voice => voiceToNotation(voice, slots.length))
