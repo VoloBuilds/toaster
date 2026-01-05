@@ -86,6 +86,7 @@ interface SequencerContextValue {
   
   // Audio preview
   playDrum: (drumSound: DrumSound) => void
+  playNotePreview: (midi: number) => void
 }
 
 const SequencerContext = createContext<SequencerContextValue | null>(null)
@@ -105,7 +106,7 @@ export const SequencerProvider = ({
   onSendToPrompt
 }: SequencerProviderProps) => {
   // Core state
-  const [mode, setModeInternal] = useState<SequencerMode>('piano')
+  const [mode, setModeInternal] = useState<SequencerMode>('notes')
   const [quantizeValue, setQuantizeValue] = useState<QuantizeValue>('1/8')
   const [cycleCount, setCycleCountInternal] = useState(DEFAULT_RECORDING_CYCLES)
   const [cursorPositionMs, setCursorPositionMs] = useState(0)
@@ -116,7 +117,7 @@ export const SequencerProvider = ({
   const cycleDurationMs = getCycleInfo?.()?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
   
   // View states for each mode
-  const [pianoViewState, setPianoViewState] = useState<SequencerViewState>(() => ({
+  const [notesViewState, setNotesViewState] = useState<SequencerViewState>(() => ({
     midiOffset: MIDI_START,
     visibleSemitones: DEFAULT_VISIBLE_SEMITONES,
     timeOffsetMs: 0,
@@ -131,8 +132,8 @@ export const SequencerProvider = ({
   }))
   
   // Current view state based on mode
-  const viewState = mode === 'drum' ? drumViewState : pianoViewState
-  const setViewState = mode === 'drum' ? setDrumViewState : setPianoViewState
+  const viewState = mode === 'drum' ? drumViewState : notesViewState
+  const setViewState = mode === 'drum' ? setDrumViewState : setNotesViewState
   
   // Note state hook
   const {
@@ -153,7 +154,7 @@ export const SequencerProvider = ({
   } = useNoteState({ mode })
   
   // Audio preview
-  const { playNote, playNoteAt, stopNote, stopNoteAt, stopAllNotes } = useAudioPreview()
+  const { playNote, playNotePreview, playNoteAt, stopNote, stopNoteAt, stopAllNotes } = useAudioPreview()
   const { playDrum, playDrumAt } = useDrumPreview()
   
   // Playback preview - uses look-ahead scheduling for precise sync with Strudel
@@ -189,7 +190,7 @@ export const SequencerProvider = ({
           visibleDurationMs: currentVisibleCycles * cycleDurationMs
         }
       }
-      setPianoViewState(updateViewState)
+      setNotesViewState(updateViewState)
       setDrumViewState(updateViewState)
       cycleDurationMsRef.current = cycleDurationMs
     }
@@ -278,7 +279,11 @@ export const SequencerProvider = ({
     }))
     
     createNotes(newNotes)
-  }, [clipboardNotes, cursorPositionMs, createNotes, mode])
+    
+    // Move cursor to end of pasted content
+    const maxEndMs = Math.max(...newNotes.map(n => n.endMs))
+    setCursorPositionMs(maxEndMs)
+  }, [clipboardNotes, cursorPositionMs, createNotes, mode, setCursorPositionMs])
   
   // Cut
   const cut = useCallback(() => {
@@ -379,7 +384,8 @@ export const SequencerProvider = ({
     handleClear,
     
     // Audio preview
-    playDrum
+    playDrum,
+    playNotePreview
   }
   
   return (

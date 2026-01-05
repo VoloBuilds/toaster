@@ -1,10 +1,10 @@
-import { SequencerNote, QuantizeValue, MAX_CYCLES, DrumSound } from './types'
+import { SequencerNote, QuantizeValue, MAX_CYCLES, DrumSound, SequencerMode } from './types'
 import { quantizeNotes, getSubdivisionsPerCycle } from './quantization'
 import { midiToNoteName } from './keyMapping'
 
 interface SlotContent {
-  notes: number[] // MIDI numbers (piano) or drum row indices (drum)
-  held: boolean // True if this slot continues a note from previous slot
+  notes: number[] // MIDI notes that START in this slot
+  heldNotes: number[] // MIDI notes that are HELD through this slot (started earlier, still sounding)
 }
 
 /**
@@ -31,26 +31,26 @@ export const notesToStrudel = (
     return drumsToStrudel(notes, cycleDurationMs, quantizeValue)
   }
   
-  return pianoToStrudel(notes, cycleDurationMs, quantizeValue)
+  return notesToStrudelInternal(notes, cycleDurationMs, quantizeValue)
 }
 
 /**
- * Convert piano notes to Strudel mini-notation
+ * Convert melodic notes to Strudel mini-notation
  */
-const pianoToStrudel = (
+const notesToStrudelInternal = (
   notes: SequencerNote[],
   cycleDurationMs: number,
   quantizeValue: QuantizeValue
 ): string => {
-  // Filter to only piano notes with valid midi
-  const pianoNotes = notes.filter(n => n.type === 'piano' && n.midi !== undefined)
+  // Filter to only notes mode with valid midi
+  const melodicNotes = notes.filter(n => n.type === 'notes' && n.midi !== undefined)
   
-  if (pianoNotes.length === 0) {
+  if (melodicNotes.length === 0) {
     return ''
   }
   
   // Quantize notes first
-  const quantizedNotes = quantizeNotes(pianoNotes, cycleDurationMs, quantizeValue)
+  const quantizedNotes = quantizeNotes(melodicNotes, cycleDurationMs, quantizeValue)
   
   // Determine total number of cycles from recording duration
   const maxEndTime = Math.max(...quantizedNotes.map(n => n.endMs))
@@ -89,7 +89,7 @@ const pianoToStrudel = (
       const slotStartMs = cycleStartMs + (slot * slotDurationMs)
       const slotEndMs = slotStartMs + slotDurationMs
       
-      const slotContent: SlotContent = { notes: [], held: false }
+      const slotContent: SlotContent = { notes: [], heldNotes: [] }
       
       for (const note of cycleNotes) {
         // Clamp note to cycle boundaries
@@ -104,7 +104,9 @@ const pianoToStrudel = (
         }
         // Check if note is held through this slot (started before, ends after)
         else if (noteStart < slotStartMs && noteEnd > slotStartMs) {
-          slotContent.held = true
+          if (note.midi !== undefined) {
+            slotContent.heldNotes.push(note.midi)
+          }
         }
       }
       
@@ -112,7 +114,7 @@ const pianoToStrudel = (
     }
     
     // Convert slots to notation
-    const cycleNotation = slotsToNotation(slots, 'piano')
+    const cycleNotation = slotsToNotation(slots, 'notes')
     cycleNotations.push(cycleNotation)
   }
   
@@ -211,11 +213,184 @@ const drumsToStrudel = (
 }
 
 /**
- * Convert slot content array to notation string for a single cycle (piano mode)
- * Note: mode parameter is for future drum mode support
+ * Check if there are overlapping notes (notes that start while others are being held)
  */
-const slotsToNotation = (slots: SlotContent[], _mode: 'piano' | 'drum'): string => {
+const hasOverlappingNotes = (slots: SlotContent[]): boolean => {
+  for (const slot of slots) {
+    // If a slot has both new notes starting AND notes being held from before,
+    // we have an overlap situation that needs parallel patterns
+    if (slot.notes.length > 0 && slot.heldNotes.length > 0) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Generate notation for a single voice (one MIDI note tracked through its duration)
+ * Returns an array of { slotIndex, duration } for where this note plays
+ */
+interface NoteEvent {
+  slotIndex: number
+  duration: number
+  midi: number
+}
+
+/**
+ * Extract all note events from slots, tracking each note's start and duration
+ */
+const extractNoteEvents = (slots: SlotContent[]): NoteEvent[] => {
+  const events: NoteEvent[] = []
+  
+  for (let i = 0; i < slots.length; i++) {
+    const slot = slots[i]
+    
+    for (const midi of slot.notes) {
+      // Count duration: how many consecutive slots is this specific note held?
+      let duration = 1
+      let j = i + 1
+      while (j < slots.length && slots[j].heldNotes.includes(midi)) {
+        duration++
+        j++
+      }
+      events.push({ slotIndex: i, duration, midi })
+    }
+  }
+  
+  return events
+}
+
+/**
+ * Group overlapping note events into separate voices for parallel patterns
+ * Notes that don't overlap can share a voice
+ */
+const groupIntoVoices = (events: NoteEvent[], totalSlots: number): NoteEvent[][] => {
+  if (events.length === 0) return []
+  
+  // Sort events by start time
+  const sortedEvents = [...events].sort((a, b) => a.slotIndex - b.slotIndex)
+  
+  // Greedy voice assignment: assign each event to first voice that doesn't conflict
+  const voices: NoteEvent[][] = []
+  
+  for (const event of sortedEvents) {
+    const eventEnd = event.slotIndex + event.duration
+    
+    // Find a voice where this event doesn't overlap with existing events
+    let assigned = false
+    for (const voice of voices) {
+      const hasConflict = voice.some(existingEvent => {
+        const existingEnd = existingEvent.slotIndex + existingEvent.duration
+        // Check if ranges overlap
+        return !(eventEnd <= existingEvent.slotIndex || event.slotIndex >= existingEnd)
+      })
+      
+      if (!hasConflict) {
+        voice.push(event)
+        assigned = true
+        break
+      }
+    }
+    
+    if (!assigned) {
+      // Create a new voice for this event
+      voices.push([event])
+    }
+  }
+  
+  return voices
+}
+
+/**
+ * Generate notation string for a single voice
+ */
+const voiceToNotation = (events: NoteEvent[], totalSlots: number): string => {
+  // Sort events by slot index
+  const sortedEvents = [...events].sort((a, b) => a.slotIndex - b.slotIndex)
+  
+  const tokens: string[] = []
+  let currentSlot = 0
+  
+  for (const event of sortedEvents) {
+    // Add rests before this event if needed
+    if (event.slotIndex > currentSlot) {
+      const restDuration = event.slotIndex - currentSlot
+      if (restDuration > 1) {
+        tokens.push(`~@${restDuration}`)
+      } else {
+        tokens.push('~')
+      }
+    }
+    
+    // Add the note with duration
+    const noteName = midiToNoteName(event.midi)
+    if (event.duration > 1) {
+      tokens.push(`${noteName}@${event.duration}`)
+    } else {
+      tokens.push(noteName)
+    }
+    
+    currentSlot = event.slotIndex + event.duration
+  }
+  
+  // Add trailing rests if needed
+  if (currentSlot < totalSlots) {
+    const restDuration = totalSlots - currentSlot
+    if (restDuration > 1) {
+      tokens.push(`~@${restDuration}`)
+    } else {
+      tokens.push('~')
+    }
+  }
+  
+  return tokens.join(' ')
+}
+
+/**
+ * Convert slot content array to notation string for a single cycle (notes mode)
+ * Handles overlapping notes by generating parallel patterns with comma separation
+ */
+const slotsToNotation = (slots: SlotContent[], _mode: 'notes' | 'drum'): string => {
   void _mode // Reserved for future drum mode support
+  
+  // Check if we need parallel patterns for overlapping notes
+  if (hasOverlappingNotes(slots)) {
+    // Extract all note events with their durations
+    const events = extractNoteEvents(slots)
+    
+    if (events.length === 0) {
+      // All rests
+      return formatRests(slots)
+    }
+    
+    // Group events into non-overlapping voices
+    const voices = groupIntoVoices(events, slots.length)
+    
+    // Generate notation for each voice
+    const voiceNotations = voices.map(voice => voiceToNotation(voice, slots.length))
+    
+    // Join with comma for parallel patterns
+    return voiceNotations.join(', ')
+  }
+  
+  // Simple case: no overlapping notes, use original sequential approach
+  return slotsToNotationSimple(slots)
+}
+
+/**
+ * Format a rest-only pattern from slots
+ */
+const formatRests = (slots: SlotContent[]): string => {
+  if (slots.length > 1) {
+    return `~@${slots.length}`
+  }
+  return '~'
+}
+
+/**
+ * Simple notation for non-overlapping notes (original algorithm)
+ */
+const slotsToNotationSimple = (slots: SlotContent[]): string => {
   const tokens: string[] = []
   let i = 0
   
@@ -227,9 +402,14 @@ const slotsToNotation = (slots: SlotContent[], _mode: 'piano' | 'drum'): string 
       const noteStr = formatNotes(slot.notes)
       
       // Count how many consecutive slots this note is held
+      // Now we check if the specific notes are in heldNotes
       let duration = 1
       let j = i + 1
-      while (j < slots.length && slots[j].notes.length === 0 && slots[j].held) {
+      // For simple case (no overlaps), check if next slots hold ANY of the notes that started
+      const startingNotes = slot.notes
+      while (j < slots.length && 
+             slots[j].notes.length === 0 && 
+             startingNotes.some(n => slots[j].heldNotes.includes(n))) {
         duration++
         j++
       }
@@ -242,7 +422,7 @@ const slotsToNotation = (slots: SlotContent[], _mode: 'piano' | 'drum'): string 
         tokens.push(noteStr)
         i++
       }
-    } else if (slot.held) {
+    } else if (slot.heldNotes.length > 0) {
       // This slot is a continuation of a previous note (already handled above)
       // This case shouldn't normally be reached, but handle it as rest
       i++
@@ -250,7 +430,7 @@ const slotsToNotation = (slots: SlotContent[], _mode: 'piano' | 'drum'): string 
       // Rest - count consecutive rests
       let restCount = 1
       let j = i + 1
-      while (j < slots.length && slots[j].notes.length === 0 && !slots[j].held) {
+      while (j < slots.length && slots[j].notes.length === 0 && slots[j].heldNotes.length === 0) {
         restCount++
         j++
       }
@@ -347,7 +527,7 @@ const formatDrumSounds = (sounds: DrumSound[]): string => {
 }
 
 /**
- * Wrap a notation string in note() for piano mode or s() for drum mode
+ * Wrap a notation string in note() for notes mode or s() for drum mode
  */
 export const wrapPattern = (notation: string, mode: SequencerMode): string => {
   if (!notation) {
@@ -371,6 +551,4 @@ export const wrapInNote = (notation: string): string => {
   return `note("${notation}")`
 }
 
-// Type for legacy compatibility
-type SequencerMode = 'piano' | 'drum'
 

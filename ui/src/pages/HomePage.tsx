@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '../components/ui/button'
 import { Textarea } from '../components/ui/textarea'
-import { Loader2, Mic, MicOff, Play, Square, Share2, Check, Undo, Redo, AlertTriangle, Wrench, Piano } from 'lucide-react'
+import { Loader2, Mic, MicOff, Play, Square, Share2, Check, Undo, Redo, AlertTriangle, Wrench, KeyboardMusic } from 'lucide-react'
 import StrudelEditor, { CycleInfo } from '../components/StrudelEditor'
 import HalVisualization from '../components/HalVisualization'
 import ClearButton from '../components/ClearButton'
@@ -727,20 +727,6 @@ Return ONLY the fixed Strudel code, no explanations.`
                 </div>
 
                 <div className="flex gap-2">
-                  {/* Sequencer Button */}
-                  <Button
-                    onClick={() => setIsSequencerOpen(prev => !prev)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    disabled={!isEditorInitialized || isEditorInitializing}
-                    className={`rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 border text-white pointer-events-auto transition-colors ${
-                      isSequencerOpen 
-                        ? 'bg-amber-700/90 hover:bg-amber-600 border-amber-500' 
-                        : 'bg-slate-800/90 hover:bg-slate-700 border-slate-600'
-                    }`}
-                  >
-                    <Piano className="h-4 w-4 sm:h-5 sm:w-5" />
-                  </Button>
-
                   <Button
                     onClick={() => editorPlayRef.current?.()}
                     onMouseDown={(e) => e.preventDefault()}
@@ -817,6 +803,22 @@ Return ONLY the fixed Strudel code, no explanations.`
                   getCycleInfo={getCycleInfoRef.current || undefined}
                 />
                 */}
+
+                {/* Sequencer Button */}
+                <div className="flex-shrink-0">
+                  <Button
+                    onClick={() => setIsSequencerOpen(prev => !prev)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    disabled={!isEditorInitialized || isEditorInitializing}
+                    className={`rounded-full w-11 h-11 sm:w-12 sm:h-12 p-0 border text-white transition-colors ${
+                      isSequencerOpen 
+                        ? 'bg-amber-700/90 hover:bg-amber-600 border-amber-500' 
+                        : 'bg-slate-800/90 hover:bg-slate-700 border-slate-600'
+                    }`}
+                  >
+                    <KeyboardMusic className="h-5 w-5" />
+                  </Button>
+                </div>
 
                 {/* AI Prompt Input with Send Button - Center */}
                 <div className="flex-1 relative">

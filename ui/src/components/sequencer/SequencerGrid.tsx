@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useCallback } from 'react'
 import { useSequencerContext } from './context/SequencerContext'
 import { useGridCoordinates } from './hooks/useGridCoordinates'
 import { useGridRenderer } from './hooks/useGridRenderer'
@@ -40,7 +40,8 @@ export const SequencerGrid = () => {
     deleteNotes,
     startBatchUpdate,
     endBatchUpdate,
-    playDrum
+    playDrum,
+    playNotePreview
   } = useSequencerContext()
   
   const { midiOffset, visibleSemitones, timeOffsetMs, visibleDurationMs } = viewState
@@ -77,7 +78,6 @@ export const SequencerGrid = () => {
     startBatchUpdate,
     endBatchUpdate,
     getCycleInfo,
-    playDrum,
     laneHeight,
     pixelsPerMs,
     getMousePosOnCanvas: coordinates.getMousePosOnCanvas,
@@ -131,10 +131,16 @@ export const SequencerGrid = () => {
     return markers
   }, [timeOffsetMs, visibleDurationMs, pixelsPerMs, getCycleInfo])
 
+  // Focus the container to ensure keyboard events work
+  const focusContainer = useCallback(() => {
+    containerRef.current?.focus()
+  }, [])
+
   return (
     <div 
       ref={containerRef}
-      className="relative w-full overflow-hidden rounded-lg border border-slate-700/50 flex"
+      tabIndex={-1}
+      className="relative w-full overflow-hidden rounded-lg border border-slate-700/50 flex focus:outline-none"
       style={{ height: CANVAS_HEIGHT }}
     >
       {/* Sidebar */}
@@ -144,6 +150,8 @@ export const SequencerGrid = () => {
         visibleSemitones={visibleSemitones}
         laneHeight={laneHeight}
         notes={notes}
+        onPlayDrum={playDrum}
+        onPlayNote={playNotePreview}
       />
       
       {/* Canvas container */}
@@ -165,11 +173,17 @@ export const SequencerGrid = () => {
             cursor: interactions.cursorStyle,
             height: CANVAS_HEIGHT
           }}
-          onMouseDown={interactions.handleMouseDown}
+          onMouseDown={(e) => {
+            focusContainer()
+            interactions.handleMouseDown(e)
+          }}
           onMouseMove={interactions.handleMouseMove}
           onMouseUp={interactions.handleMouseUp}
           onMouseLeave={interactions.handleMouseLeave}
-          onTouchStart={interactions.handleTouchStart}
+          onTouchStart={(e) => {
+            focusContainer()
+            interactions.handleTouchStart(e)
+          }}
           onTouchMove={interactions.handleTouchMove}
           onTouchEnd={interactions.handleTouchEnd}
           onTouchCancel={interactions.handleTouchCancel}

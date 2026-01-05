@@ -4,7 +4,6 @@ import {
   SequencerMode,
   QuantizeValue,
   CycleInfo,
-  DrumSound,
   DRUM_SOUNDS,
   DEFAULT_CYCLE_DURATION_MS,
   PIANO_MIDI_MIN,
@@ -38,8 +37,7 @@ export interface InteractionUtilsReturn {
   // Note creation helpers
   createNoteFromDrawingState: (
     drawingState: DrawingState,
-    createNote: (noteData: Omit<SequencerNote, 'id'>) => void,
-    playDrum?: (drumSound: DrumSound) => void
+    createNote: (noteData: Omit<SequencerNote, 'id'>) => void
   ) => void
   
   // Note movement helpers
@@ -130,8 +128,7 @@ export const useInteractionUtils = ({
   // Create a note from drawing state
   const createNoteFromDrawingState = useCallback((
     drawingState: DrawingState,
-    createNote: (noteData: Omit<SequencerNote, 'id'>) => void,
-    playDrum?: (drumSound: DrumSound) => void
+    createNote: (noteData: Omit<SequencerNote, 'id'>) => void
   ) => {
     if (mode === 'drum') {
       const drumSound = DRUM_SOUNDS[drawingState.row]?.key
@@ -142,13 +139,12 @@ export const useInteractionUtils = ({
           startMs: drawingState.startMs,
           endMs: drawingState.currentEndMs
         })
-        playDrum?.(drumSound)
       }
     } else {
       const midi = midiOffset + drawingState.row
       if (midi >= PIANO_MIDI_MIN && midi <= PIANO_MIDI_MAX) {
         createNote({
-          type: 'piano',
+          type: 'notes',
           midi,
           startMs: drawingState.startMs,
           endMs: drawingState.currentEndMs
@@ -178,7 +174,7 @@ export const useInteractionUtils = ({
     const newStartMs = snapToGrid(Math.max(0, note.startMs + deltaMs))
     const duration = note.endMs - note.startMs
     
-    if (mode === 'piano' && note.midi !== undefined) {
+    if (mode === 'notes' && note.midi !== undefined) {
       const newMidi = Math.max(PIANO_MIDI_MIN, Math.min(PIANO_MIDI_MAX - 1, note.midi + deltaRow))
       return {
         startMs: newStartMs,

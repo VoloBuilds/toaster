@@ -64,6 +64,10 @@ export const usePlaybackPreview = ({
   // Animation frame ref
   const frameRef = useRef<number | null>(null)
   
+  // Track if this is the first syncLoop frame after playback started
+  // On the first frame, we need to catch up and schedule notes from position 0
+  const isFirstSyncFrameRef = useRef<boolean>(true)
+  
   // Exposed pattern position for visual playhead sync
   const [patternPositionMs, setPatternPositionMs] = useState(0)
   
@@ -123,8 +127,12 @@ export const usePlaybackPreview = ({
     }
     
     const currentTime = ac.currentTime
-    const { phase, cycleDurationMs } = cycleInfo
+    const { phase: rawPhase, cycleDurationMs } = cycleInfo
     const totalPatternDurationMs = currentCycleCount * cycleDurationMs
+    
+    // Strudel can return slightly negative phase values when restarting playback
+    // Clamp to [0, 1) to prevent negative position calculations
+    const phase = rawPhase < 0 ? 0 : (rawPhase >= 1 ? rawPhase - 1 : rawPhase)
     
     // Calculate current position within strudel cycle
     const strudelPositionMs = phase * cycleDurationMs
@@ -153,8 +161,10 @@ export const usePlaybackPreview = ({
     const didPatternWrap = patternPosMs < lastPatternPositionRef.current - (cycleDurationMs * 0.5)
     
     if (didPatternWrap) {
-      // Pattern wrapped back to start - clear scheduled drums for new cycle
+      // Pattern wrapped back to start - clear scheduled notes for new cycle
+      // This allows the same notes to be re-triggered at the start of the next loop
       scheduledDrumsRef.current.clear()
+      scheduledNotesRef.current.clear()
     }
     
     // Calculate lookahead window
@@ -163,6 +173,17 @@ export const usePlaybackPreview = ({
     const lookAheadEndMs = (patternPosMs + lookAheadMs) % totalPatternDurationMs
     const lookAheadWraps = (patternPosMs + lookAheadMs) >= totalPatternDurationMs
     
+    // On the first frame after playback starts, OR after pattern wrap, we may have
+    // "jumped" past position 0. We need to catch up and schedule any notes we missed
+    // at the beginning.
+    const isFirstFrame = isFirstSyncFrameRef.current
+    if (isFirstFrame) {
+      isFirstSyncFrameRef.current = false
+    }
+    
+    // Treat pattern wrap the same as first frame - need to catch notes from 0
+    const needsCatchUp = isFirstFrame || didPatternWrap
+    
     // Update tracking
     lastPatternPositionRef.current = patternPosMs
     lastStrudelCycleRef.current = phase
@@ -170,13 +191,13 @@ export const usePlaybackPreview = ({
     setPatternPositionMs(patternPosMs)
     
     // Filter notes by type
-    const pianoNotes = currentNotes.filter(n => n.type === 'piano' && n.midi !== undefined)
+    const melodicNotes = currentNotes.filter(n => n.type === 'notes' && n.midi !== undefined)
     const drumNotes = currentNotes.filter(n => n.type === 'drum' && n.drumSound !== undefined)
     
     // Clean up deleted piano notes that are still tracked
-    const currentPianoNoteIds = new Set(pianoNotes.map(n => n.id))
+    const currentMelodicNoteIds = new Set(melodicNotes.map(n => n.id))
     for (const [noteId, { midi }] of scheduledNotesRef.current.entries()) {
-      if (!currentPianoNoteIds.has(noteId)) {
+      if (!currentMelodicNoteIds.has(noteId)) {
         stopNoteRef.current(midi)
         scheduledNotesRef.current.delete(noteId)
       }
@@ -196,10 +217,19 @@ export const usePlaybackPreview = ({
       // Check if note is within lookahead window
       let shouldSchedule = false
       
+      // On first frame or pattern wrap, extend window backward to catch notes from position 0
+      // that we may have "jumped over" when syncing to Strudel's current phase
+      const windowStartMs = needsCatchUp ? 0 : patternPosMs
+      
       if (lookAheadWraps) {
         // Lookahead window wraps around pattern end
-        // Check if note is in [patternPosMs, totalPatternDurationMs) OR [0, lookAheadEndMs)
-        if (noteStartMs >= patternPosMs || noteStartMs < lookAheadEndMs) {
+        // Check if note is in [windowStartMs, totalPatternDurationMs) OR [0, lookAheadEndMs)
+        if (noteStartMs >= windowStartMs || noteStartMs < lookAheadEndMs) {
+          shouldSchedule = true
+        }
+      } else if (needsCatchUp) {
+        // Catch-up frame: check if note is in [0, lookAheadEndMs)
+        if (noteStartMs < lookAheadEndMs) {
           shouldSchedule = true
         }
       } else {
@@ -211,9 +241,15 @@ export const usePlaybackPreview = ({
       
       if (shouldSchedule) {
         // Calculate the exact audio context time when this note should play
-        // msUntilNote can be negative if note is behind current position (wrap case)
         let msUntilNote = noteStartMs - patternPosMs
-        if (msUntilNote < 0) {
+        
+        // For catch-up notes on first frame or pattern wrap (notes behind current position),
+        // schedule them immediately rather than waiting for pattern wrap
+        if (needsCatchUp && msUntilNote < 0) {
+          // Note is behind current position - play it immediately
+          msUntilNote = 0
+        } else if (msUntilNote < 0) {
+          // Normal wrap case - note is in the wrapped portion of lookahead
           msUntilNote += totalPatternDurationMs
         }
         
@@ -237,7 +273,7 @@ export const usePlaybackPreview = ({
     // ===============================
     // Schedule Piano Notes (sustained)
     // ===============================
-    for (const note of pianoNotes) {
+    for (const note of melodicNotes) {
       if (note.midi === undefined) continue
       
       const noteId = note.id
@@ -250,8 +286,15 @@ export const usePlaybackPreview = ({
       let shouldScheduleStart = false
       
       if (!isScheduled) {
+        // On first frame or pattern wrap, extend window backward to catch notes from position 0
         if (lookAheadWraps) {
-          if (noteStartMs >= patternPosMs || noteStartMs < lookAheadEndMs) {
+          const windowStartMs = needsCatchUp ? 0 : patternPosMs
+          if (noteStartMs >= windowStartMs || noteStartMs < lookAheadEndMs) {
+            shouldScheduleStart = true
+          }
+        } else if (needsCatchUp) {
+          // Catch-up frame: check if note is in [0, lookAheadEndMs)
+          if (noteStartMs < lookAheadEndMs) {
             shouldScheduleStart = true
           }
         } else {
@@ -264,7 +307,14 @@ export const usePlaybackPreview = ({
       if (shouldScheduleStart) {
         // Calculate audio times
         let msUntilStart = noteStartMs - patternPosMs
-        if (msUntilStart < 0) {
+        
+        // For catch-up notes on first frame or pattern wrap (notes behind current position),
+        // schedule them immediately rather than waiting for pattern wrap
+        if (needsCatchUp && msUntilStart < 0) {
+          // Note is behind current position - play it immediately
+          msUntilStart = 0
+        } else if (msUntilStart < 0) {
+          // Normal wrap case - note is in the wrapped portion of lookahead
           msUntilStart += totalPatternDurationMs
         }
         
@@ -324,6 +374,7 @@ export const usePlaybackPreview = ({
       lastStrudelCycleRef.current = cycleInfo?.phase ?? 0
       scheduledDrumsRef.current.clear()
       scheduledNotesRef.current.clear()
+      isFirstSyncFrameRef.current = true  // Mark that the next syncLoop is the first frame
       
       try {
         lastProcessedTimeRef.current = getAudioContext().currentTime

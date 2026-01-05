@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import {
   SequencerNote,
   SequencerMode,
   DRUM_SOUNDS,
-  MONITOR_CANVAS_HEIGHT
+  MONITOR_CANVAS_HEIGHT,
+  DrumSound
 } from '../../lib/sequencer/types'
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -23,6 +24,8 @@ interface SequencerGridSidebarProps {
   visibleSemitones: number
   laneHeight: number
   notes: SequencerNote[]
+  onPlayDrum?: (drumSound: DrumSound) => void
+  onPlayNote?: (midi: number) => void
 }
 
 interface SidebarLabel {
@@ -30,6 +33,9 @@ interface SidebarLabel {
   isActive?: boolean
   isC?: boolean
   isBlackKey?: boolean
+  // For click handling
+  drumKey?: DrumSound
+  midi?: number
 }
 
 export const SequencerGridSidebar = ({
@@ -37,13 +43,17 @@ export const SequencerGridSidebar = ({
   midiOffset,
   visibleSemitones,
   laneHeight,
-  notes
+  notes,
+  onPlayDrum,
+  onPlayNote
 }: SequencerGridSidebarProps) => {
   const sidebarLabels = useMemo((): SidebarLabel[] => {
     if (mode === 'drum') {
+      // Reverse so sidebar displays top-to-bottom matching canvas (row 0 at bottom)
       return DRUM_SOUNDS.map((drum) => ({
         label: drum.label,
-        isActive: notes.some(n => n.drumSound === drum.key)
+        isActive: notes.some(n => n.drumSound === drum.key),
+        drumKey: drum.key
       })).reverse()
     } else {
       const labels: SidebarLabel[] = []
@@ -53,12 +63,21 @@ export const SequencerGridSidebar = ({
           label: getMidiNoteName(midi),
           isC: midi % 12 === 0,
           isBlackKey: isBlackKey(midi),
-          isActive: notes.some(n => n.midi === midi)
+          isActive: notes.some(n => n.midi === midi),
+          midi
         })
       }
       return labels
     }
   }, [mode, midiOffset, visibleSemitones, notes])
+
+  const handleLabelClick = useCallback((item: SidebarLabel) => {
+    if (mode === 'drum' && item.drumKey && onPlayDrum) {
+      onPlayDrum(item.drumKey)
+    } else if (mode !== 'drum' && item.midi !== undefined && onPlayNote) {
+      onPlayNote(item.midi)
+    }
+  }, [mode, onPlayDrum, onPlayNote])
 
   return (
     <div 
@@ -69,7 +88,9 @@ export const SequencerGridSidebar = ({
         {sidebarLabels.map((item, i) => (
           <div
             key={i}
-            className={`flex items-center justify-end pr-1 font-mono transition-colors ${
+            onClick={() => handleLabelClick(item)}
+            className={`flex items-center justify-end pr-1 font-mono transition-colors cursor-pointer select-none
+              hover:brightness-125 active:brightness-150 ${
               item.isActive
                 ? mode === 'drum' ? 'text-green-400 bg-green-400/10' : 'text-amber-400 bg-amber-400/10'
                 : item.isC

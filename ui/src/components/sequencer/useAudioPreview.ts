@@ -11,11 +11,19 @@ interface ActiveOscillator {
   scheduledStopTime?: number  // For scheduled stops
 }
 
+// 1/8 note at 120 BPM = 250ms - good for a short preview sound
+const DEFAULT_PREVIEW_DURATION_MS = 250
+
 interface UseAudioPreviewReturn {
   /**
    * Play a note immediately (for UI feedback)
    */
   playNote: (midi: number) => void
+  /**
+   * Play a note for a short duration (for sidebar preview clicks)
+   * Auto-stops after 1/8 note duration
+   */
+  playNotePreview: (midi: number) => void
   /**
    * Play a note at a specific scheduled time (for synced playback)
    */
@@ -155,6 +163,19 @@ export const useAudioPreview = (): UseAudioPreviewReturn => {
   }, [getAudioContext, playNoteAtTime])
 
   /**
+   * Play a note for a short preview duration (1/8 note at 120 BPM)
+   * Used for sidebar label clicks - auto-stops after duration
+   */
+  const playNotePreview = useCallback((midi: number) => {
+    const ctx = getAudioContext()
+    const now = ctx.currentTime
+    playNoteAtTime(midi, now)
+    // Schedule stop after preview duration
+    const stopTime = now + (DEFAULT_PREVIEW_DURATION_MS / 1000)
+    stopNoteAtTime(midi, stopTime)
+  }, [getAudioContext, playNoteAtTime, stopNoteAtTime])
+
+  /**
    * Play a note at a specific scheduled time (for synced playback)
    */
   const playNoteAt = useCallback((midi: number, scheduledTime: number) => {
@@ -233,6 +254,6 @@ export const useAudioPreview = (): UseAudioPreviewReturn => {
     }
   }, [])
 
-  return { playNote, playNoteAt, stopNote, stopNoteAt, stopAllNotes }
+  return { playNote, playNotePreview, playNoteAt, stopNote, stopNoteAt, stopAllNotes }
 }
 

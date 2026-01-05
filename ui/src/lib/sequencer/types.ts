@@ -1,7 +1,7 @@
 // Type definitions for the sequencer feature
 
 // Sequencer modes
-export type SequencerMode = 'piano' | 'drum'
+export type SequencerMode = 'notes' | 'drum'
 
 // Drum sound types
 export type DrumSound = 'bd' | 'sd' | 'hh' | 'oh' | 'cp' | 'cr' | 'rd' | 'ht' | 'mt' | 'lt' | 'rim'
@@ -13,26 +13,26 @@ export interface DrumSoundConfig {
   description: string
 }
 
-// Available drum sounds (ordered from top to bottom in grid)
+// Available drum sounds (ordered bottom to top in grid, matching MIDI convention)
 export const DRUM_SOUNDS: DrumSoundConfig[] = [
-  { key: 'cr', label: 'Crash', description: 'Crash cymbal' },
-  { key: 'rd', label: 'Ride', description: 'Ride cymbal' },
-  { key: 'oh', label: 'Open HH', description: 'Open hi-hat' },
-  { key: 'hh', label: 'Closed HH', description: 'Closed hi-hat' },
-  { key: 'ht', label: 'High Tom', description: 'High tom' },
-  { key: 'mt', label: 'Mid Tom', description: 'Mid tom' },
-  { key: 'lt', label: 'Low Tom', description: 'Low tom' },
-  { key: 'cp', label: 'Clap', description: 'Clap/handclap' },
-  { key: 'sd', label: 'Snare', description: 'Snare drum' },
-  { key: 'rim', label: 'Rim', description: 'Rimshot' },
   { key: 'bd', label: 'Kick', description: 'Bass drum/kick' },
+  { key: 'rim', label: 'Rim', description: 'Rimshot' },
+  { key: 'sd', label: 'Snare', description: 'Snare drum' },
+  { key: 'cp', label: 'Clap', description: 'Clap/handclap' },
+  { key: 'lt', label: 'Low Tom', description: 'Low tom' },
+  { key: 'mt', label: 'Mid Tom', description: 'Mid tom' },
+  { key: 'ht', label: 'High Tom', description: 'High tom' },
+  { key: 'hh', label: 'Closed HH', description: 'Closed hi-hat' },
+  { key: 'oh', label: 'Open HH', description: 'Open hi-hat' },
+  { key: 'rd', label: 'Ride', description: 'Ride cymbal' },
+  { key: 'cr', label: 'Crash', description: 'Crash cymbal' },
 ]
 
-// Sequencer note - supports both piano and drum modes
+// Sequencer note - supports both notes and drum modes
 export interface SequencerNote {
   id: string
-  type: 'piano' | 'drum'
-  // For piano mode
+  type: 'notes' | 'drum'
+  // For notes mode
   midi?: number
   // For drum mode
   drumSound?: DrumSound
@@ -40,34 +40,6 @@ export interface SequencerNote {
   startMs: number
   endMs: number
 }
-
-// Legacy RecordedNote type for backwards compatibility
-export interface RecordedNote {
-  id: string
-  midi: number
-  startMs: number
-  endMs: number
-}
-
-// Convert SequencerNote to RecordedNote (for piano mode)
-export const toRecordedNote = (note: SequencerNote): RecordedNote | null => {
-  if (note.type !== 'piano' || note.midi === undefined) return null
-  return {
-    id: note.id,
-    midi: note.midi,
-    startMs: note.startMs,
-    endMs: note.endMs
-  }
-}
-
-// Convert RecordedNote to SequencerNote
-export const fromRecordedNote = (note: RecordedNote): SequencerNote => ({
-  id: note.id,
-  type: 'piano',
-  midi: note.midi,
-  startMs: note.startMs,
-  endMs: note.endMs
-})
 
 export type QuantizeValue = '1/4' | '1/8' | '1/16' | '1/32' | '1/4T' | '1/8T' | '1/16T' | '1/32T'
 
@@ -78,7 +50,7 @@ export interface CycleInfo {
   cycleDurationMs: number // duration of one cycle in ms
 }
 
-// MIDI note range for 2 octaves (C3-C5) - used for piano keyboard
+// MIDI note range for 2 octaves (C3-C5) - used for notes mode keyboard
 export const MIDI_START = 48 // C3
 export const MIDI_END = 72 // C5
 export const NUM_OCTAVES = 2
@@ -119,15 +91,12 @@ export const PIANO_MIDI_MAX = 108  // C8
 
 // View state interface for SequencerGrid
 export interface SequencerViewState {
-  // Vertical: which MIDI notes are visible (piano mode) or which drum rows (drum mode)
-  midiOffset: number           // Lowest visible MIDI note (piano) or row offset (drum)
+  // Vertical: which MIDI notes are visible (notes mode) or which drum rows (drum mode)
+  midiOffset: number           // Lowest visible MIDI note (notes) or row offset (drum)
   visibleSemitones: number     // How many semitones visible (zoom level)
   
   // Horizontal: which time range is visible
   timeOffsetMs: number         // Start of visible time window
   visibleDurationMs: number    // Duration of visible time (zoom level)
 }
-
-// Legacy alias for backwards compatibility
-export type MidiMonitorViewState = SequencerViewState
 

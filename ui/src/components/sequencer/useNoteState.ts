@@ -1,6 +1,34 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { SequencerNote, SequencerMode } from '../../lib/sequencer/types'
 
+// Helper to check if two time ranges overlap
+const timesOverlap = (
+  start1: number, end1: number,
+  start2: number, end2: number
+): boolean => {
+  return start1 < end2 && end1 > start2
+}
+
+// Check if a note would overlap with an existing note (same MIDI/drumSound)
+const wouldOverlap = (
+  newNote: { type: string; midi?: number; drumSound?: string; startMs: number; endMs: number },
+  existing: SequencerNote
+): boolean => {
+  if (newNote.type !== existing.type) return false
+  
+  if (newNote.type === 'notes' && existing.type === 'notes') {
+    return newNote.midi === existing.midi && 
+           timesOverlap(newNote.startMs, newNote.endMs, existing.startMs, existing.endMs)
+  }
+  
+  if (newNote.type === 'drum' && existing.type === 'drum') {
+    return newNote.drumSound === existing.drumSound && 
+           timesOverlap(newNote.startMs, newNote.endMs, existing.startMs, existing.endMs)
+  }
+  
+  return false
+}
+
 interface UseNoteStateOptions {
   mode: SequencerMode
   maxHistorySize?: number
@@ -30,7 +58,7 @@ const generateNoteId = () => `note-${Date.now()}-${++noteIdCounter}`
 
 // In-memory store for notes (persists across mode switches, clears on refresh)
 const inMemoryNoteStore: Record<SequencerMode, SequencerNote[]> = {
-  piano: [],
+  notes: [],
   drum: []
 }
 
@@ -122,6 +150,10 @@ export const useNoteState = (options: UseNoteStateOptions): UseNoteStateReturn =
   
   // Create a single note
   const createNote = useCallback((noteData: Omit<SequencerNote, 'id'>) => {
+    // Check for overlapping notes with same MIDI/drumSound
+    const hasOverlap = notesRef.current.some(existing => wouldOverlap(noteData, existing))
+    if (hasOverlap) return // Skip creating overlapping note
+    
     // Save history BEFORE modifying state (uses ref for current notes)
     saveToHistory(notesRef.current)
     
@@ -136,10 +168,37 @@ export const useNoteState = (options: UseNoteStateOptions): UseNoteStateReturn =
   const createNotes = useCallback((notesData: Omit<SequencerNote, 'id'>[]) => {
     if (notesData.length === 0) return
     
+    // Filter out notes that would overlap with existing notes
+    const nonOverlappingNotes = notesData.filter(noteData => {
+      return !notesRef.current.some(existing => wouldOverlap(noteData, existing))
+    })
+    
+    // Also filter out notes that would overlap with each other in the batch
+    const finalNotes: Omit<SequencerNote, 'id'>[] = []
+    for (const noteData of nonOverlappingNotes) {
+      const overlapsInBatch = finalNotes.some(other => {
+        if (noteData.type !== other.type) return false
+        if (noteData.type === 'notes' && other.type === 'notes') {
+          return noteData.midi === other.midi && 
+                 timesOverlap(noteData.startMs, noteData.endMs, other.startMs, other.endMs)
+        }
+        if (noteData.type === 'drum' && other.type === 'drum') {
+          return noteData.drumSound === other.drumSound && 
+                 timesOverlap(noteData.startMs, noteData.endMs, other.startMs, other.endMs)
+        }
+        return false
+      })
+      if (!overlapsInBatch) {
+        finalNotes.push(noteData)
+      }
+    }
+    
+    if (finalNotes.length === 0) return
+    
     // Save history BEFORE modifying state
     saveToHistory(notesRef.current)
     
-    const newNotes: SequencerNote[] = notesData.map(data => {
+    const newNotes: SequencerNote[] = finalNotes.map(data => {
       // Defensively remove any existing id to ensure we always generate new ones
       const { id: _existingId, ...dataWithoutId } = data as SequencerNote
       return {
@@ -153,8 +212,19 @@ export const useNoteState = (options: UseNoteStateOptions): UseNoteStateReturn =
   // Update a note
   const updateNote = useCallback((id: string, updates: Partial<Omit<SequencerNote, 'id'>>) => {
     // Check if note exists before saving history
-    const noteExists = notesRef.current.some(n => n.id === id)
-    if (!noteExists) return
+    const existingNote = notesRef.current.find(n => n.id === id)
+    if (!existingNote) return
+    
+    // Build the updated note to check for overlaps
+    const updatedNote = { ...existingNote, ...updates }
+    
+    // Check if the update would cause an overlap with other notes (excluding self)
+    const wouldCauseOverlap = notesRef.current.some(other => {
+      if (other.id === id) return false // Skip self
+      return wouldOverlap(updatedNote, other)
+    })
+    
+    if (wouldCauseOverlap) return // Reject update that would cause overlap
     
     saveToHistory(notesRef.current)
     setNotes(prev => prev.map(note => 
@@ -244,7 +314,7 @@ export const useNoteState = (options: UseNoteStateOptions): UseNoteStateReturn =
     setNotes(prev => prev.map(scaleNote))
     
     // Scale the OTHER mode's notes in in-memory store
-    const otherMode = mode === 'piano' ? 'drum' : 'piano'
+    const otherMode = mode === 'notes' ? 'drum' : 'notes'
     const otherNotes = inMemoryNoteStore[otherMode]
     if (otherNotes.length > 0) {
       inMemoryNoteStore[otherMode] = otherNotes.map(scaleNote)

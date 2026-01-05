@@ -4,7 +4,6 @@ import {
   SequencerMode,
   QuantizeValue,
   CycleInfo,
-  DrumSound,
   DEFAULT_CYCLE_DURATION_MS,
   PIANO_MIDI_MIN,
   PIANO_MIDI_MAX,
@@ -68,9 +67,6 @@ interface UseGridInteractionsOptions {
   // Strudel
   getCycleInfo: () => CycleInfo | null
   
-  // Audio preview
-  playDrum: (drumSound: DrumSound) => void
-  
   // Coordinate helpers
   laneHeight: number
   pixelsPerMs: number
@@ -126,7 +122,6 @@ export const useGridInteractions = ({
   startBatchUpdate,
   endBatchUpdate,
   getCycleInfo,
-  playDrum,
   laneHeight,
   pixelsPerMs,
   getMousePosOnCanvas,
@@ -175,7 +170,6 @@ export const useGridInteractions = ({
     deleteNote,
     startBatchUpdate,
     endBatchUpdate,
-    playDrum,
     pixelsPerMs,
     getTouchPosOnCanvas,
     findNoteAtPosition,
@@ -217,8 +211,8 @@ export const useGridInteractions = ({
       
       updateViewState({ visibleDurationMs: newDuration, timeOffsetMs: newOffset })
       
-    } else if (isAlt && mode === 'piano') {
-      // Vertical zoom (piano mode only)
+    } else if (isAlt && mode === 'notes') {
+      // Vertical zoom (notes mode only)
       const zoomFactor = delta > 0 ? 1.2 : 0.83
       const newSemitones = Math.round(Math.max(
         MIN_VISIBLE_SEMITONES,
@@ -233,8 +227,8 @@ export const useGridInteractions = ({
       
       updateViewState({ visibleSemitones: newSemitones, midiOffset: newOffset })
       
-    } else if (isShift && mode === 'piano') {
-      // Vertical scroll (piano mode only)
+    } else if (isShift && mode === 'notes') {
+      // Vertical scroll (notes mode only)
       const scrollAmount = delta * Math.max(1, Math.floor(visibleSemitones / 12))
       const newOffset = Math.max(
         PIANO_MIDI_MIN,
@@ -313,13 +307,12 @@ export const useGridInteractions = ({
     } else {
       // Clicked empty area
       if (isShift) {
-        // Shift+drag = box select in add mode
+        // Shift+drag = box select (always additive)
         setBoxSelectState({
           anchorX: pos.x,
           anchorY: pos.y,
           currentX: pos.x,
-          currentY: pos.y,
-          addMode: true
+          currentY: pos.y
         })
         e.preventDefault()
       } else {
@@ -355,7 +348,13 @@ export const useGridInteractions = ({
       setDragState(prev => prev ? { ...prev, currentX: pos.x, currentY: pos.y } : null)
       
       if (dragState.copying && (dragState.type === 'group-move' || dragState.type === 'move')) {
-        // Generate copy preview - explicitly exclude id to ensure new IDs are generated
+        // Generate copy preview
+        // IMPORTANT: We must explicitly destructure and exclude `id` at runtime.
+        // At runtime, `originalNote` contains an `id` property from the stored note.
+        // TypeScript's `Omit` only affects compile-time type checking, not runtime behavior.
+        // Without explicit destructuring, spreading `noteWithoutId` would include the original `id`,
+        // which would cause duplicate IDs when notes are created from the preview.
+        // The explicit `{ id: _id, ...noteWithoutId }` destructure ensures `id` is truly excluded at runtime.
         const previewNotes: Omit<SequencerNote, 'id'>[] = dragState.originalNotes.map(originalNote => {
           const { id: _id, ...noteWithoutId } = originalNote
           const updates = utils.applyMoveToNote(originalNote, deltaMs, deltaRow)
@@ -394,67 +393,74 @@ export const useGridInteractions = ({
   }, [boxSelectState, drawingState, dragState, getMousePosOnCanvas, findNoteAtPosition, utils, updateNote, xToTimeMs, notes])
   
   const handleMouseUp = useCallback(() => {
-    if (boxSelectState) {
-      const selectedNotes = findNotesInRect(
-        boxSelectState.anchorX, boxSelectState.anchorY,
-        boxSelectState.currentX, boxSelectState.currentY,
-        notes
-      )
-      
-      if (boxSelectState.addMode) {
+    try {
+      if (boxSelectState) {
+        const selectedNotes = findNotesInRect(
+          boxSelectState.anchorX, boxSelectState.anchorY,
+          boxSelectState.currentX, boxSelectState.currentY,
+          notes
+        )
+        
+        // Box select is always additive
         const newSelection = new Set(selectedNoteIds)
         for (const note of selectedNotes) newSelection.add(note.id)
         setSelectedNoteIds(newSelection)
-      } else {
-        setSelectedNoteIds(new Set(selectedNotes.map(n => n.id)))
+        
+        setBoxSelectState(null)
+      } else if (drawingState) {
+        utils.createNoteFromDrawingState(drawingState, createNote)
+        setCursorPositionMs(drawingState.startMs)
+        setDrawingState(null)
+        setCursorStyle('crosshair')
+      } else if (dragState && dragState.copying && copyPreviewNotes.length > 0) {
+        // Ctrl+drag copy: create the copied notes
+        // Note: Ctrl+drag doesn't start batch mode (if !isCtrl in mouseDown), so no endBatchUpdate needed
+        createNotes(copyPreviewNotes)
+        setCopyPreviewNotes([])
+      }
+    } finally {
+      // Always end batch update if we were in a non-copying drag operation
+      if (dragState && !dragState.copying) {
+        endBatchUpdate()
+      }
+      setDragState(null)
+      setCopyPreviewNotes([])
+    }
+  }, [boxSelectState, drawingState, dragState, copyPreviewNotes, findNotesInRect, notes, selectedNoteIds, setSelectedNoteIds, utils, createNote, createNotes, setCursorPositionMs, endBatchUpdate])
+  
+  const handleMouseLeave = useCallback(() => {
+    try {
+      if (boxSelectState) {
+        const selectedNotes = findNotesInRect(
+          boxSelectState.anchorX, boxSelectState.anchorY,
+          boxSelectState.currentX, boxSelectState.currentY,
+          notes
+        )
+        
+        // Box select is always additive
+        const newSelection = new Set(selectedNoteIds)
+        for (const note of selectedNotes) newSelection.add(note.id)
+        setSelectedNoteIds(newSelection)
+      }
+      
+      if (drawingState) {
+        utils.createNoteFromDrawingState(drawingState, createNote)
+        setCursorPositionMs(drawingState.startMs)
+      }
+    } finally {
+      // Always end batch update if we were in a non-copying drag operation
+      if (dragState && !dragState.copying) {
+        endBatchUpdate()
       }
       
       setBoxSelectState(null)
-    } else if (drawingState) {
-      utils.createNoteFromDrawingState(drawingState, createNote, playDrum)
-      setCursorPositionMs(drawingState.startMs)
       setDrawingState(null)
-      setCursorStyle('crosshair')
-    } else if (dragState && dragState.copying && copyPreviewNotes.length > 0) {
-      // Ctrl+drag copy: create the copied notes
-      // Note: Ctrl+drag doesn't start batch mode (if !isCtrl in mouseDown), so no endBatchUpdate needed
-      createNotes(copyPreviewNotes)
+      setDragState(null)
       setCopyPreviewNotes([])
-    } else if (dragState) {
-      // Any other drag operation (move, resize, or abandoned copy): end batch if started
-      // This handles both !copying case and copying with no preview notes
-      endBatchUpdate()
+      setHoveredNoteId(null)
+      setCursorStyle('default')
     }
-    setDragState(null)
-    setCopyPreviewNotes([])
-  }, [boxSelectState, drawingState, dragState, copyPreviewNotes, findNotesInRect, notes, selectedNoteIds, setSelectedNoteIds, utils, createNote, createNotes, setCursorPositionMs, endBatchUpdate, playDrum])
-  
-  const handleMouseLeave = useCallback(() => {
-    if (boxSelectState) {
-      const selectedNotes = findNotesInRect(
-        boxSelectState.anchorX, boxSelectState.anchorY,
-        boxSelectState.currentX, boxSelectState.currentY,
-        notes
-      )
-      setSelectedNoteIds(new Set(selectedNotes.map(n => n.id)))
-    }
-    
-    if (drawingState) {
-      utils.createNoteFromDrawingState(drawingState, createNote, playDrum)
-      setCursorPositionMs(drawingState.startMs)
-    }
-    
-    if (dragState && !dragState.copying) {
-      endBatchUpdate()
-    }
-    
-    setBoxSelectState(null)
-    setDrawingState(null)
-    setDragState(null)
-    setCopyPreviewNotes([])
-    setHoveredNoteId(null)
-    setCursorStyle('default')
-  }, [boxSelectState, drawingState, dragState, utils, createNote, findNotesInRect, setSelectedNoteIds, setCursorPositionMs, endBatchUpdate, notes, playDrum])
+  }, [boxSelectState, drawingState, dragState, utils, createNote, findNotesInRect, setSelectedNoteIds, setCursorPositionMs, endBatchUpdate, notes])
   
   // ==========================================
   // Keyboard Handlers

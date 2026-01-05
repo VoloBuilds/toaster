@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { SequencerGrid } from './SequencerGrid'
 import { ControlBar } from './ControlBar'
 import { SequencerProvider, useSequencerContext } from './context/SequencerContext'
@@ -11,22 +11,10 @@ interface SequencerConsoleProps {
   isStrudelPlaying?: boolean
 }
 
-// Detect touch device
-const getIsTouchDevice = () => {
-  if (typeof window === 'undefined') return false
-  return 'ontouchstart' in window || navigator.maxTouchPoints > 0
-}
-
 // Inner component that uses context
 const SequencerConsoleInner = ({ isOpen }: { isOpen: boolean }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const { copy, paste, cut, undo, redo, selectAll } = useSequencerContext()
-  const [isTouchDevice, setIsTouchDevice] = useState(false)
-  
-  // Detect touch device on mount
-  useEffect(() => {
-    setIsTouchDevice(getIsTouchDevice())
-  }, [])
   
   // Keyboard shortcuts
   useEffect(() => {
@@ -92,19 +80,6 @@ const SequencerConsoleInner = ({ isOpen }: { isOpen: boolean }) => {
       
       {/* Control Bar */}
       <ControlBar />
-      
-      {/* Hints */}
-      <div className="px-3 pb-2 text-[9px] sm:text-[10px] font-mono text-slate-500 flex justify-center sm:justify-between">
-        {isTouchDevice ? (
-          <span>Tap: Add/Remove | Drag: Draw/Resize | Hold+Drag: Move | Pinch: Zoom</span>
-        ) : (
-          <>
-            <span className="hidden sm:inline">Click: Draw note | Shift+Drag: Select | Ctrl+Drag: Copy | Del: Delete</span>
-            <span className="hidden sm:inline">Ctrl+C/V/X: Copy/Paste/Cut | Ctrl+Z/Y: Undo/Redo</span>
-            <span className="sm:hidden">Click: Draw | Del: Delete | Ctrl+Z/Y: Undo/Redo</span>
-          </>
-        )}
-      </div>
     </div>
   )
 }

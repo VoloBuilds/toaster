@@ -1,6 +1,5 @@
 import { useCallback } from 'react'
 import { DrumSound } from '../../lib/sequencer/types'
-import { STRUDEL_LATENCY_S } from '../../lib/sequencer/timing'
 
 // @ts-expect-error - Strudel packages don't have TypeScript declarations
 import { superdough } from 'superdough'

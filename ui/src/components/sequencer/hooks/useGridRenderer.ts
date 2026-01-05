@@ -47,7 +47,6 @@ export interface BoxSelectState {
   anchorY: number
   currentX: number
   currentY: number
-  addMode: boolean
 }
 
 interface UseGridRendererOptions {
