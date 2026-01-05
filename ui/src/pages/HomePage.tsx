@@ -617,7 +617,17 @@ Return ONLY the fixed Strudel code, no explanations.`
         </div>
 
         {/* Strudel Editor - Scrollable middle section */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pb-32 pt-2">
+        <div 
+          className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pb-32 pt-2"
+          onClick={() => {
+            // On vertical/portrait screens, collapse the sequencer when clicking into the editor
+            // This helps users see what they're editing without the sequencer taking up space
+            const isVerticalScreen = window.innerHeight > window.innerWidth
+            if (isVerticalScreen && isSequencerOpen) {
+              setIsSequencerOpen(false)
+            }
+          }}
+        >
           <div className="w-full">
             <StrudelEditor 
               key="strudel-editor"

@@ -27,6 +27,9 @@ export interface TouchState {
   // For scroll mode: store initial view state when scroll starts
   initialMidiOffset?: number
   initialTimeOffsetMs?: number
+  // For velocity tracking (fast swipe detection)
+  lastMoveTime?: number
+  lastMovePos?: { x: number; y: number }
 }
 
 // Pinch state for two-finger zoom
@@ -383,12 +386,22 @@ export const useTouchInteractions = ({
           
           updateViewState({ midiOffset: newMidiOffset, timeOffsetMs: newTimeOffsetMs })
         } else if (!touchState.hitNote && touchState.interactionType === 'none') {
-          // Empty area, first movement - determine scroll vs draw based on direction
+          // Empty area, first movement - determine scroll vs draw based on direction and velocity
           const deltaX = Math.abs(pos.x - touchState.startPos.x)
           const deltaY = Math.abs(pos.y - touchState.startPos.y)
           
-          if (deltaY > deltaX * 0.7) {
-            // Primarily vertical movement - enter scroll mode
+          // Calculate horizontal velocity to detect fast swipes
+          const now = Date.now()
+          const timeSinceStart = now - touchState.startTime
+          const horizontalVelocity = timeSinceStart > 0 ? deltaX / timeSinceStart : 0  // pixels per ms
+          
+          // Fast horizontal swipe threshold: 0.1 pixels/ms (100 pixels/second)
+          // Low threshold means drawing long notes requires slow, deliberate drags (almost tap + slow extend)
+          const fastSwipeThreshold = 0.1
+          const isFastHorizontalSwipe = horizontalVelocity > fastSwipeThreshold && deltaX > deltaY
+          
+          if (deltaY > deltaX * 0.7 || isFastHorizontalSwipe) {
+            // Primarily vertical movement OR fast horizontal swipe - enter scroll mode
             setTouchState(prev => prev ? { 
               ...prev, 
               interactionType: 'scroll',
@@ -396,7 +409,7 @@ export const useTouchInteractions = ({
               initialTimeOffsetMs: timeOffsetMs
             } : null)
           } else {
-            // Primarily horizontal movement - enter draw mode
+            // Slow horizontal movement - enter draw mode
             const newDrawingState = utils.getDrawingStateForPosition(touchState.startPos)
             if (newDrawingState) {
               setDrawingState(newDrawingState)

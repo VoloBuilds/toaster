@@ -7,8 +7,10 @@ import { SequencerGridSidebar } from './SequencerGridSidebar'
 import { 
   MONITOR_CANVAS_WIDTH,
   MONITOR_CANVAS_HEIGHT,
-  DEFAULT_CYCLE_DURATION_MS
+  DEFAULT_CYCLE_DURATION_MS,
+  DRUM_SOUNDS
 } from '../../lib/sequencer/types'
+import { getSubdivisionsPerCycle } from '../../lib/sequencer/quantization'
 
 const CANVAS_WIDTH = MONITOR_CANVAS_WIDTH
 const CANVAS_HEIGHT = MONITOR_CANVAS_HEIGHT
@@ -136,6 +138,55 @@ export const SequencerGrid = () => {
     containerRef.current?.focus()
   }, [])
 
+  // Handle clicks on the "first frame extension zone" - the area between sidebar and canvas
+  // This makes it easier to click on the first frame by extending the clickable area into the sidebar
+  const handleFirstFrameZoneClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    focusContainer()
+    
+    // Calculate which row was clicked based on y position relative to the zone element
+    const rect = e.currentTarget.getBoundingClientRect()
+    const relativeY = e.clientY - rect.top
+    const normalizedY = relativeY / rect.height // 0 to 1
+    
+    // Convert to row (rows go from bottom to top, so invert)
+    const effectiveRows = mode === 'drum' ? DRUM_SOUNDS.length : visibleSemitones
+    const rowFromTop = Math.floor(normalizedY * effectiveRows)
+    const row = effectiveRows - 1 - rowFromTop // Invert for bottom-to-top indexing
+    
+    // Calculate slot duration for note length
+    const cycleInfo = getCycleInfo()
+    const currentCycleDurationMs = cycleInfo?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
+    const subdivisions = getSubdivisionsPerCycle(quantizeValue)
+    const slotDurationMs = currentCycleDurationMs / subdivisions
+    
+    // Create note at the first frame (time = 0, or the current view's start if scrolled)
+    // Use timeOffsetMs as the start if the view is scrolled, but snap to grid
+    const snappedStartMs = Math.floor(timeOffsetMs / slotDurationMs) * slotDurationMs
+    
+    if (mode === 'drum') {
+      const drumSound = DRUM_SOUNDS[row]
+      if (drumSound) {
+        createNote({
+          type: 'drum',
+          drumSound: drumSound.key,
+          startMs: snappedStartMs,
+          endMs: snappedStartMs + slotDurationMs
+        })
+      }
+    } else {
+      const midi = midiOffset + row
+      createNote({
+        type: 'notes',
+        midi,
+        startMs: snappedStartMs,
+        endMs: snappedStartMs + slotDurationMs
+      })
+    }
+    
+    e.preventDefault()
+    e.stopPropagation()
+  }, [focusContainer, mode, visibleSemitones, midiOffset, getCycleInfo, quantizeValue, timeOffsetMs, createNote])
+
   return (
     <div 
       ref={containerRef}
@@ -152,6 +203,19 @@ export const SequencerGrid = () => {
         notes={notes}
         onPlayDrum={playDrum}
         onPlayNote={playNotePreview}
+      />
+      
+      {/* First frame extension zone - makes it easier to click on the first grid column */}
+      {/* Positioned to overlap the right portion of the sidebar where labels don't reach */}
+      <div
+        className="absolute top-0 bottom-0 cursor-crosshair z-10"
+        style={{
+          // Position from the left edge of the sidebar, leaving room for label text
+          left: mode === 'drum' ? '8px' : '4px',
+          // Width extends from left of labels to just past the sidebar border
+          width: mode === 'drum' ? '50px' : '28px',
+        }}
+        onMouseDown={handleFirstFrameZoneClick}
       />
       
       {/* Canvas container */}

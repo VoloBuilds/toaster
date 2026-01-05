@@ -88,9 +88,7 @@ export const SequencerGridSidebar = ({
         {sidebarLabels.map((item, i) => (
           <div
             key={i}
-            onClick={() => handleLabelClick(item)}
-            className={`flex items-center justify-end pr-1 font-mono transition-colors cursor-pointer select-none
-              hover:brightness-125 active:brightness-150 ${
+            className={`flex items-center justify-end pr-1 font-mono transition-colors ${
               item.isActive
                 ? mode === 'drum' ? 'text-green-400 bg-green-400/10' : 'text-amber-400 bg-amber-400/10'
                 : item.isC
@@ -105,7 +103,12 @@ export const SequencerGridSidebar = ({
               lineHeight: '1'
             }}
           >
-            {item.label}
+            <span
+              onClick={() => handleLabelClick(item)}
+              className="cursor-pointer select-none hover:brightness-125 active:brightness-150 px-1"
+            >
+              {item.label}
+            </span>
           </div>
         ))}
       </div>
