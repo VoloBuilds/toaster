@@ -120,7 +120,7 @@ export const ControlBar = () => {
               value={quantizeValue}
               onChange={(e) => setQuantizeValue(e.target.value as QuantizeValue)}
               className={`
-                appearance-none h-8 md:h-9 px-2 md:px-3 pr-6 md:pr-7 rounded
+                appearance-none h-8 md:h-9 w-[72px] md:w-[80px] px-2 md:px-3 pr-6 md:pr-7 rounded
                 font-mono text-xs md:text-sm
                 bg-slate-700/80 text-slate-200
                 border border-slate-600/50
@@ -131,9 +131,11 @@ export const ControlBar = () => {
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)'
             }}
           >
-            {QUANTIZE_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
+            <optgroup label="Quantize">
+              {QUANTIZE_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </optgroup>
           </select>
           <ChevronDown className="absolute right-1.5 md:right-2 top-1/2 -translate-y-1/2 h-3 w-3 md:h-4 md:w-4 text-slate-400 pointer-events-none" />
         </div>
@@ -147,7 +149,7 @@ export const ControlBar = () => {
               value={cycleCount}
               onChange={(e) => setCycleCount(Number(e.target.value))}
               className={`
-                appearance-none h-8 md:h-9 px-2 md:px-3 pr-6 md:pr-7 rounded
+                appearance-none h-8 md:h-9 w-[52px] md:w-[56px] px-2 md:px-3 pr-6 md:pr-7 rounded
                 font-mono text-xs md:text-sm
                 bg-slate-700/80 text-slate-200
                 border border-slate-600/50
@@ -158,9 +160,11 @@ export const ControlBar = () => {
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)'
             }}
           >
-            {CYCLE_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
+            <optgroup label="Cycles (pattern length)">
+              {CYCLE_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </optgroup>
           </select>
           <ChevronDown className="absolute right-1.5 md:right-2 top-1/2 -translate-y-1/2 h-3 w-3 md:h-4 md:w-4 text-slate-400 pointer-events-none" />
         </div>
