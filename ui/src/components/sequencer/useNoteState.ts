@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { SequencerNote, SequencerMode } from '../../lib/sequencer/types'
 
-// Helper to check if two time ranges overlap
-const timesOverlap = (
+// Helper to check if two slot ranges overlap (using integer comparison)
+// With integer slots, endSlot1 = 12 and startSlot2 = 12 correctly evaluates as non-overlapping
+const slotsOverlap = (
   start1: number, end1: number,
   start2: number, end2: number
 ): boolean => {
@@ -11,19 +12,19 @@ const timesOverlap = (
 
 // Check if a note would overlap with an existing note (same MIDI/drumSound)
 const wouldOverlap = (
-  newNote: { type: string; midi?: number; drumSound?: string; startMs: number; endMs: number },
+  newNote: { type: string; midi?: number; drumSound?: string; startSlot: number; endSlot: number },
   existing: SequencerNote
 ): boolean => {
   if (newNote.type !== existing.type) return false
   
   if (newNote.type === 'notes' && existing.type === 'notes') {
     return newNote.midi === existing.midi && 
-           timesOverlap(newNote.startMs, newNote.endMs, existing.startMs, existing.endMs)
+           slotsOverlap(newNote.startSlot, newNote.endSlot, existing.startSlot, existing.endSlot)
   }
   
   if (newNote.type === 'drum' && existing.type === 'drum') {
     return newNote.drumSound === existing.drumSound && 
-           timesOverlap(newNote.startMs, newNote.endMs, existing.startMs, existing.endMs)
+           slotsOverlap(newNote.startSlot, newNote.endSlot, existing.startSlot, existing.endSlot)
   }
   
   return false
@@ -49,8 +50,6 @@ interface UseNoteStateReturn {
   redo: () => void
   canUndo: boolean
   canRedo: boolean
-  // Scale all notes by a ratio (for BPM changes)
-  scaleAllNotes: (ratio: number) => void
 }
 
 let noteIdCounter = 0
@@ -180,11 +179,11 @@ export const useNoteState = (options: UseNoteStateOptions): UseNoteStateReturn =
         if (noteData.type !== other.type) return false
         if (noteData.type === 'notes' && other.type === 'notes') {
           return noteData.midi === other.midi && 
-                 timesOverlap(noteData.startMs, noteData.endMs, other.startMs, other.endMs)
+                 slotsOverlap(noteData.startSlot, noteData.endSlot, other.startSlot, other.endSlot)
         }
         if (noteData.type === 'drum' && other.type === 'drum') {
           return noteData.drumSound === other.drumSound && 
-                 timesOverlap(noteData.startMs, noteData.endMs, other.startMs, other.endMs)
+                 slotsOverlap(noteData.startSlot, noteData.endSlot, other.startSlot, other.endSlot)
         }
         return false
       })
@@ -298,28 +297,6 @@ export const useNoteState = (options: UseNoteStateOptions): UseNoteStateReturn =
     setNotes(nextState)
   }, [])
   
-  // Scale all notes by a ratio (for BPM changes)
-  // This scales notes in BOTH modes to maintain relative positions
-  // Does NOT save to history since it's a temporal transformation
-  const scaleAllNotes = useCallback((ratio: number) => {
-    if (ratio === 1) return
-    
-    const scaleNote = (note: SequencerNote): SequencerNote => ({
-      ...note,
-      startMs: note.startMs * ratio,
-      endMs: note.endMs * ratio
-    })
-    
-    // Scale current mode notes
-    setNotes(prev => prev.map(scaleNote))
-    
-    // Scale the OTHER mode's notes in in-memory store
-    const otherMode = mode === 'notes' ? 'drum' : 'notes'
-    const otherNotes = inMemoryNoteStore[otherMode]
-    if (otherNotes.length > 0) {
-      inMemoryNoteStore[otherMode] = otherNotes.map(scaleNote)
-    }
-  }, [mode])
   
   return {
     notes,
@@ -334,7 +311,6 @@ export const useNoteState = (options: UseNoteStateOptions): UseNoteStateReturn =
     undo,
     redo,
     canUndo: historyRef.current.length > 0,
-    canRedo: futureRef.current.length > 0,
-    scaleAllNotes
+    canRedo: futureRef.current.length > 0
   }
 }

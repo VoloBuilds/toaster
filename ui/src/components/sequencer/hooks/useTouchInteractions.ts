@@ -2,13 +2,15 @@ import { useState, useCallback, useEffect, useRef, RefObject, Dispatch, SetState
 import {
   SequencerNote,
   SequencerMode,
+  CycleInfo,
   DEFAULT_CYCLE_DURATION_MS,
   PIANO_MIDI_MIN,
   PIANO_MIDI_MAX,
   MIN_VISIBLE_SEMITONES,
   MAX_VISIBLE_SEMITONES,
   MIN_VISIBLE_DURATION_CYCLES,
-  SequencerViewState
+  SequencerViewState,
+  BASE_SLOTS_PER_CYCLE
 } from '../../../lib/sequencer/types'
 import { NoteHit } from './useGridCoordinates'
 import { DrawingState } from './useGridRenderer'
@@ -78,6 +80,9 @@ interface UseTouchInteractionsOptions {
   getTouchPosOnCanvas: (touch: { clientX: number; clientY: number }) => { x: number; y: number }
   findNoteAtPosition: (x: number, y: number, notes: SequencerNote[], isTouch?: boolean) => NoteHit | null
   
+  // Strudel integration
+  getCycleInfo: () => CycleInfo | null
+  
   // Shared utilities
   utils: InteractionUtilsReturn
 }
@@ -111,6 +116,7 @@ export const useTouchInteractions = ({
   pixelsPerMs,
   getTouchPosOnCanvas,
   findNoteAtPosition,
+  getCycleInfo,
   utils
 }: UseTouchInteractionsOptions): UseTouchInteractionsReturn => {
   const { timeOffsetMs, visibleDurationMs, visibleSemitones } = viewState
@@ -338,21 +344,20 @@ export const useTouchInteractions = ({
             setTouchState(prev => prev ? { ...prev, interactionType: 'resize' } : null)
           }
           
-          // Perform resize
-          const deltaX = pos.x - touchState.startPos.x
-          const deltaMs = deltaX / pixelsPerMs
+          // Perform resize (now using slots)
+          const { deltaSlots } = utils.calculateMoveDelta(touchState.startPos, pos)
           
           if (touchState.hitEdge === 'left') {
-            const newStartMs = utils.calculateResizeStart(touchState.hitNote, deltaMs)
-            updateNote(touchState.hitNote.id, { startMs: newStartMs })
+            const newStartSlot = utils.calculateResizeStart(touchState.hitNote, deltaSlots)
+            updateNote(touchState.hitNote.id, { startSlot: newStartSlot })
           } else {
-            const newEndMs = utils.calculateResizeEnd(touchState.hitNote, deltaMs)
-            updateNote(touchState.hitNote.id, { endMs: newEndMs })
+            const newEndSlot = utils.calculateResizeEnd(touchState.hitNote, deltaSlots)
+            updateNote(touchState.hitNote.id, { endSlot: newEndSlot })
           }
         } else if (touchState.interactionType === 'move' && touchState.hitNote) {
-          // Move mode - long press was triggered, now dragging
-          const { deltaMs, deltaRow } = utils.calculateMoveDelta(touchState.startPos, pos)
-          const updates = utils.applyMoveToNote(touchState.hitNote, deltaMs, deltaRow)
+          // Move mode - long press was triggered, now dragging (now using slots)
+          const { deltaSlots, deltaRow } = utils.calculateMoveDelta(touchState.startPos, pos)
+          const updates = utils.applyMoveToNote(touchState.hitNote, deltaSlots, deltaRow)
           updateNote(touchState.hitNote.id, updates)
         } else if (touchState.interactionType === 'scroll') {
           // Scroll mode - pan the view
@@ -417,12 +422,16 @@ export const useTouchInteractions = ({
             }
           }
         } else if (!touchState.hitNote && drawingState && touchState.interactionType === 'draw') {
-          // Draw mode - continue drawing
-          const slotDurationMs = utils.getSlotDurationMs()
-          const rawTimeMs = utils.snapToGrid(pos.x / pixelsPerMs + viewState.timeOffsetMs)
-          const newEndMs = Math.max(drawingState.startMs + slotDurationMs, rawTimeMs)
+          // Draw mode - continue drawing (now using slots)
+          const slotsPerSubdiv = utils.getSlotsPerSubdiv()
+          // Calculate new end slot from touch position using dynamic cycle duration
+          const cycleDurationMs = getCycleInfo()?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
+          const rawSlot = utils.snapToSlot(
+            Math.round((pos.x / pixelsPerMs + viewState.timeOffsetMs) / cycleDurationMs * BASE_SLOTS_PER_CYCLE)
+          )
+          const newEndSlot = Math.max(drawingState.startSlot + slotsPerSubdiv, rawSlot)
           
-          setDrawingState(prev => prev ? { ...prev, currentEndMs: newEndMs } : null)
+          setDrawingState(prev => prev ? { ...prev, currentEndSlot: newEndSlot } : null)
         }
       }
     }

@@ -22,7 +22,8 @@ import {
   MAX_VISIBLE_SEMITONES,
   MIN_VISIBLE_DURATION_CYCLES,
   MAX_VISIBLE_DURATION_CYCLES,
-  DRUM_SOUNDS
+  DRUM_SOUNDS,
+  BASE_SLOTS_PER_CYCLE
 } from '../../../lib/sequencer/types'
 
 // Context value interface
@@ -149,8 +150,7 @@ export const SequencerProvider = ({
     undo,
     redo,
     canUndo,
-    canRedo,
-    scaleAllNotes
+    canRedo
   } = useNoteState({ mode })
   
   // Audio preview
@@ -173,28 +173,25 @@ export const SequencerProvider = ({
     playDrumAt
   })
   
-  // Update visibleDurationMs and scale notes when cycleDurationMs changes
+  // Update visibleDurationMs when cycleDurationMs changes
+  // With slot-based timing, notes don't need scaling - slots are abstract units
+  // Only the view state needs updating to maintain visible cycles
   const cycleDurationMsRef = useRef(cycleDurationMs)
   useEffect(() => {
     if (cycleDurationMsRef.current !== cycleDurationMs) {
-      const ratio = cycleDurationMs / cycleDurationMsRef.current
-      
-      // Scale all notes to maintain relative positions
-      scaleAllNotes(ratio)
-      
       // Update view state to maintain visible cycles
-      const updateViewState = (prev: SequencerViewState) => {
+      const updateViewStateForBpm = (prev: SequencerViewState) => {
         const currentVisibleCycles = prev.visibleDurationMs / cycleDurationMsRef.current
         return {
           ...prev,
           visibleDurationMs: currentVisibleCycles * cycleDurationMs
         }
       }
-      setNotesViewState(updateViewState)
-      setDrumViewState(updateViewState)
+      setNotesViewState(updateViewStateForBpm)
+      setDrumViewState(updateViewStateForBpm)
       cycleDurationMsRef.current = cycleDurationMs
     }
-  }, [cycleDurationMs, scaleAllNotes])
+  }, [cycleDurationMs])
   
   // View state update handler with clamping
   const updateViewState = useCallback((updates: Partial<SequencerViewState>) => {
@@ -251,14 +248,15 @@ export const SequencerProvider = ({
     const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id))
     if (selectedNotes.length === 0) return
     
-    const earliestStart = Math.min(...selectedNotes.map(n => n.startMs))
+    // Find earliest start slot
+    const earliestStartSlot = Math.min(...selectedNotes.map(n => n.startSlot))
     
     const clipboard = selectedNotes.map(n => {
       const { id, ...rest } = n
       return {
         ...rest,
-        startMs: n.startMs - earliestStart,
-        endMs: n.endMs - earliestStart
+        startSlot: n.startSlot - earliestStartSlot,
+        endSlot: n.endSlot - earliestStartSlot
       }
     })
     
@@ -272,18 +270,22 @@ export const SequencerProvider = ({
     const compatibleNotes = clipboardNotes.filter(n => n.type === mode)
     if (compatibleNotes.length === 0) return
     
+    // Convert cursor position (in ms) to slot for paste offset
+    const cursorSlot = Math.round((cursorPositionMs / cycleDurationMs) * BASE_SLOTS_PER_CYCLE)
+    
     const newNotes = compatibleNotes.map(n => ({
       ...n,
-      startMs: n.startMs + cursorPositionMs,
-      endMs: n.endMs + cursorPositionMs
+      startSlot: n.startSlot + cursorSlot,
+      endSlot: n.endSlot + cursorSlot
     }))
     
     createNotes(newNotes)
     
-    // Move cursor to end of pasted content
-    const maxEndMs = Math.max(...newNotes.map(n => n.endMs))
+    // Move cursor to end of pasted content (convert back to ms)
+    const maxEndSlot = Math.max(...newNotes.map(n => n.endSlot))
+    const maxEndMs = (maxEndSlot / BASE_SLOTS_PER_CYCLE) * cycleDurationMs
     setCursorPositionMs(maxEndMs)
-  }, [clipboardNotes, cursorPositionMs, createNotes, mode, setCursorPositionMs])
+  }, [clipboardNotes, cursorPositionMs, cycleDurationMs, createNotes, mode, setCursorPositionMs])
   
   // Cut
   const cut = useCallback(() => {

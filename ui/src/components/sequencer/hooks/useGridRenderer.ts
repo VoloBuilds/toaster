@@ -5,9 +5,9 @@ import {
   QuantizeValue,
   DRUM_SOUNDS,
   MONITOR_CANVAS_WIDTH,
-  MONITOR_CANVAS_HEIGHT
+  MONITOR_CANVAS_HEIGHT,
 } from '../../../lib/sequencer/types'
-import { getSubdivisionsPerCycle } from '../../../lib/sequencer/quantization'
+import { getSubdivisionsPerCycle, slotToMs } from '../../../lib/sequencer/quantization'
 import { NoteRect } from './useGridCoordinates'
 
 const CANVAS_WIDTH = MONITOR_CANVAS_WIDTH
@@ -35,11 +35,11 @@ const COLORS = {
 const BLACK_KEY_INDICES = [1, 3, 6, 8, 10]
 const isBlackKey = (midi: number) => BLACK_KEY_INDICES.includes(midi % 12)
 
-// Interaction states for rendering
+// Interaction states for rendering (slot-based for precision)
 export interface DrawingState {
   row: number
-  startMs: number
-  currentEndMs: number
+  startSlot: number
+  currentEndSlot: number
 }
 
 export interface BoxSelectState {
@@ -209,8 +209,11 @@ export const useGridRenderer = ({
         }
         
         const y = CANVAS_HEIGHT - ((rowIndex + 1) * laneHeight)
-        const x = (previewNote.startMs - timeOffsetMs) * pixelsPerMs
-        const width = Math.max(2, (previewNote.endMs - previewNote.startMs) * pixelsPerMs)
+        // Convert slots to ms for rendering
+        const startMs = slotToMs(previewNote.startSlot, cycleDurationMs)
+        const endMs = slotToMs(previewNote.endSlot, cycleDurationMs)
+        const x = (startMs - timeOffsetMs) * pixelsPerMs
+        const width = Math.max(2, (endMs - startMs) * pixelsPerMs)
         
         if (x + width < 0 || x > CANVAS_WIDTH) continue
         
@@ -242,8 +245,11 @@ export const useGridRenderer = ({
     // Draw note being drawn
     if (drawingState) {
       const y = CANVAS_HEIGHT - ((drawingState.row + 1) * laneHeight)
-      const x = (drawingState.startMs - timeOffsetMs) * pixelsPerMs
-      const width = (drawingState.currentEndMs - drawingState.startMs) * pixelsPerMs
+      // Convert slots to ms for rendering
+      const startMs = slotToMs(drawingState.startSlot, cycleDurationMs)
+      const endMs = slotToMs(drawingState.currentEndSlot, cycleDurationMs)
+      const x = (startMs - timeOffsetMs) * pixelsPerMs
+      const width = (endMs - startMs) * pixelsPerMs
       
       if (!(x + width < 0 || x > CANVAS_WIDTH)) {
         const clampedX = Math.max(0, x)

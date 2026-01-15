@@ -1,4 +1,4 @@
-import { SequencerNote, QuantizeValue } from './types'
+import { SequencerNote, QuantizeValue, BASE_SLOTS_PER_CYCLE } from './types'
 
 /**
  * Get the number of subdivisions per cycle for a given quantize value
@@ -18,74 +18,100 @@ export const getSubdivisionsPerCycle = (quantizeValue: QuantizeValue): number =>
 }
 
 /**
- * Snap a time value to the nearest grid slot
- * @param timeMs - Time in milliseconds
- * @param slotDurationMs - Duration of each slot in milliseconds
- * @returns Snapped time in milliseconds
+ * Get the number of base slots per subdivision for a given quantize value.
+ * This is how many of the 96 base slots make up one quantize unit.
  */
-const snapToGrid = (timeMs: number, slotDurationMs: number): number => {
-  return Math.round(timeMs / slotDurationMs) * slotDurationMs
+export const getSlotsPerSubdivision = (quantizeValue: QuantizeValue): number => {
+  const subdivisions = getSubdivisionsPerCycle(quantizeValue)
+  return BASE_SLOTS_PER_CYCLE / subdivisions
 }
 
 /**
- * Quantize notes to the specified grid resolution
- * @param notes - Array of sequencer notes
- * @param cycleDurationMs - Duration of one cycle in milliseconds
+ * Convert slot index to milliseconds.
+ * Only used at rendering/audio boundaries.
+ */
+export const slotToMs = (slot: number, cycleDurationMs: number): number => {
+  return (slot / BASE_SLOTS_PER_CYCLE) * cycleDurationMs
+}
+
+/**
+ * Convert milliseconds to slot index.
+ * Rounds to nearest slot. Used for mouse input conversion.
+ */
+export const msToSlot = (ms: number, cycleDurationMs: number): number => {
+  return Math.round((ms / cycleDurationMs) * BASE_SLOTS_PER_CYCLE)
+}
+
+/**
+ * Snap a slot to the nearest grid position for a given quantize value.
+ * Uses pure integer math to eliminate floating-point drift.
+ */
+export const snapSlotToGrid = (slot: number, quantizeValue: QuantizeValue): number => {
+  const slotsPerSubdivision = getSlotsPerSubdivision(quantizeValue)
+  return Math.round(slot / slotsPerSubdivision) * slotsPerSubdivision
+}
+
+/**
+ * Floor-snap a slot to the grid (for determining note start positions).
+ */
+export const floorSlotToGrid = (slot: number, quantizeValue: QuantizeValue): number => {
+  const slotsPerSubdivision = getSlotsPerSubdivision(quantizeValue)
+  return Math.floor(slot / slotsPerSubdivision) * slotsPerSubdivision
+}
+
+/**
+ * Quantize notes to the specified grid resolution.
+ * Notes are already in slot units, so this snaps to the grid.
+ * @param notes - Array of sequencer notes (slot-based)
  * @param quantizeValue - Quantization resolution
  * @returns New array of quantized notes (original notes are not modified)
  */
 export const quantizeNotes = (
   notes: SequencerNote[],
-  cycleDurationMs: number,
   quantizeValue: QuantizeValue
 ): SequencerNote[] => {
-  const subdivisions = getSubdivisionsPerCycle(quantizeValue)
-  const slotDurationMs = cycleDurationMs / subdivisions
+  const slotsPerSubdivision = getSlotsPerSubdivision(quantizeValue)
   
   return notes.map(note => {
-    // Snap start time to nearest slot
-    const quantizedStart = snapToGrid(note.startMs, slotDurationMs)
+    // Snap start slot to nearest grid position
+    const quantizedStart = snapSlotToGrid(note.startSlot, quantizeValue)
     
-    // Snap end time to nearest slot
-    let quantizedEnd = snapToGrid(note.endMs, slotDurationMs)
+    // Snap end slot to nearest grid position
+    let quantizedEnd = snapSlotToGrid(note.endSlot, quantizeValue)
     
-    // Ensure minimum duration of 1 slot
+    // Ensure minimum duration of 1 subdivision
     if (quantizedEnd <= quantizedStart) {
-      quantizedEnd = quantizedStart + slotDurationMs
+      quantizedEnd = quantizedStart + slotsPerSubdivision
     }
     
     return {
       ...note,
-      startMs: quantizedStart,
-      endMs: quantizedEnd
+      startSlot: quantizedStart,
+      endSlot: quantizedEnd
     }
   })
 }
 
 /**
- * Get the slot index for a given time
- * @param timeMs - Time in milliseconds
- * @param cycleDurationMs - Duration of one cycle in milliseconds
+ * Get the quantize-grid slot index for a given base slot.
+ * @param slot - Base slot index (0-95 per cycle)
  * @param quantizeValue - Quantization resolution
- * @returns Slot index (may exceed cycle boundaries)
+ * @returns Quantize-grid slot index
  */
-export const getSlotIndex = (
-  timeMs: number,
-  cycleDurationMs: number,
+export const getQuantizeSlotIndex = (
+  slot: number,
   quantizeValue: QuantizeValue
 ): number => {
-  const subdivisions = getSubdivisionsPerCycle(quantizeValue)
-  const slotDurationMs = cycleDurationMs / subdivisions
-  return Math.floor(timeMs / slotDurationMs)
+  const slotsPerSubdivision = getSlotsPerSubdivision(quantizeValue)
+  return Math.floor(slot / slotsPerSubdivision)
 }
 
 /**
- * Get the cycle index for a given time
- * @param timeMs - Time in milliseconds
- * @param cycleDurationMs - Duration of one cycle in milliseconds
+ * Get the cycle index for a given slot.
+ * @param slot - Base slot index
  * @returns Cycle index (0-based)
  */
-export const getCycleIndex = (timeMs: number, cycleDurationMs: number): number => {
-  return Math.floor(timeMs / cycleDurationMs)
+export const getCycleIndexFromSlot = (slot: number): number => {
+  return Math.floor(slot / BASE_SLOTS_PER_CYCLE)
 }
 

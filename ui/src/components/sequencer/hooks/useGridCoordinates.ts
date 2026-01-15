@@ -7,6 +7,7 @@ import {
   MONITOR_CANVAS_WIDTH,
   MONITOR_CANVAS_HEIGHT
 } from '../../../lib/sequencer/types'
+import { slotToMs } from '../../../lib/sequencer/quantization'
 
 const CANVAS_WIDTH = MONITOR_CANVAS_WIDTH
 const CANVAS_HEIGHT = MONITOR_CANVAS_HEIGHT
@@ -27,6 +28,7 @@ interface UseGridCoordinatesOptions {
   mode: SequencerMode
   viewState: SequencerViewState
   canvasRef: RefObject<HTMLCanvasElement>
+  cycleDurationMs: number
 }
 
 interface UseGridCoordinatesReturn {
@@ -52,7 +54,8 @@ interface UseGridCoordinatesReturn {
 export const useGridCoordinates = ({
   mode,
   viewState,
-  canvasRef
+  canvasRef,
+  cycleDurationMs
 }: UseGridCoordinatesOptions): UseGridCoordinatesReturn => {
   const { midiOffset, visibleSemitones, timeOffsetMs, visibleDurationMs } = viewState
   
@@ -63,6 +66,7 @@ export const useGridCoordinates = ({
   const pixelsPerMs = CANVAS_WIDTH / visibleDurationMs
   
   // Get note rectangle on canvas
+  // Converts slot-based note timing to pixel positions
   const getNoteRect = useCallback((note: SequencerNote): NoteRect => {
     let rowIndex: number
     
@@ -76,11 +80,14 @@ export const useGridCoordinates = ({
     }
     
     const y = CANVAS_HEIGHT - ((rowIndex + 1) * laneHeight)
-    const x = (note.startMs - timeOffsetMs) * pixelsPerMs
-    const width = Math.max(2, (note.endMs - note.startMs) * pixelsPerMs)
+    // Convert slots to ms for pixel calculation
+    const startMs = slotToMs(note.startSlot, cycleDurationMs)
+    const endMs = slotToMs(note.endSlot, cycleDurationMs)
+    const x = (startMs - timeOffsetMs) * pixelsPerMs
+    const width = Math.max(2, (endMs - startMs) * pixelsPerMs)
     
     return { x, y, width, height: laneHeight - 1 }
-  }, [mode, midiOffset, laneHeight, timeOffsetMs, pixelsPerMs])
+  }, [mode, midiOffset, laneHeight, timeOffsetMs, pixelsPerMs, cycleDurationMs])
   
   // Convert mouse event to canvas coordinates
   const getMousePosOnCanvas = useCallback((e: MouseEvent | React.MouseEvent) => {

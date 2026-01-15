@@ -1,5 +1,5 @@
-import { SequencerNote, QuantizeValue, MAX_CYCLES, DrumSound, SequencerMode } from './types'
-import { getSubdivisionsPerCycle } from './quantization'
+import { SequencerNote, QuantizeValue, MAX_CYCLES, DrumSound, SequencerMode, BASE_SLOTS_PER_CYCLE } from './types'
+import { getSubdivisionsPerCycle, getSlotsPerSubdivision } from './quantization'
 import { midiToNoteName } from './keyMapping'
 
 interface SlotContent {
@@ -24,39 +24,32 @@ const QUANTIZE_BY_SUBDIVISIONS: { value: QuantizeValue; subdivisions: number }[]
 
 /**
  * Find the optimal (coarsest) quantization that can accurately represent all note positions.
- * This ensures the exported notation matches exactly what the user sees on the grid,
- * regardless of what quantization settings were used when placing the notes.
+ * With slot-based timing, this is now exact integer math - no floating point issues.
  * 
- * @param notes - Array of sequencer notes
- * @param cycleDurationMs - Duration of one cycle in milliseconds
+ * @param notes - Array of sequencer notes (slot-based)
  * @returns The coarsest quantization value that aligns with all note positions
  */
-const findOptimalQuantization = (
-  notes: SequencerNote[],
-  cycleDurationMs: number
-): QuantizeValue => {
+const findOptimalQuantization = (notes: SequencerNote[]): QuantizeValue => {
   if (notes.length === 0) {
     return '1/8' // Default for empty
   }
   
-  // Collect all unique time positions (start and end of each note)
-  const times = new Set<number>()
+  // Collect all unique slot positions (start and end of each note)
+  const slots = new Set<number>()
   for (const note of notes) {
-    times.add(note.startMs)
-    times.add(note.endMs)
+    slots.add(note.startSlot)
+    slots.add(note.endSlot)
   }
   
   // Check each quantization from coarsest to finest
-  for (const { value, subdivisions } of QUANTIZE_BY_SUBDIVISIONS) {
-    const slotDurationMs = cycleDurationMs / subdivisions
+  // A slot aligns to a grid if it's divisible by the slots per subdivision
+  for (const { value } of QUANTIZE_BY_SUBDIVISIONS) {
+    const slotsPerSubdiv = getSlotsPerSubdivision(value)
     
     let allAligned = true
-    for (const time of times) {
-      // Check if this time aligns to the grid (within floating point tolerance)
-      const slots = time / slotDurationMs
-      const rounded = Math.round(slots)
-      // Use a small tolerance (0.001 slots) to account for floating point errors
-      if (Math.abs(slots - rounded) > 0.001) {
+    for (const slot of slots) {
+      // Check if this slot aligns to the grid (exact integer check)
+      if (slot % slotsPerSubdiv !== 0) {
         allAligned = false
         break
       }
@@ -100,10 +93,11 @@ export const notesToStrudel = (
 
 /**
  * Convert melodic notes to Strudel mini-notation
+ * Notes use slot-based timing (96 slots per cycle)
  */
 const notesToStrudelInternal = (
   notes: SequencerNote[],
-  cycleDurationMs: number,
+  _cycleDurationMs: number,
   _quantizeValue: QuantizeValue
 ): string => {
   // Filter to only notes mode with valid midi
@@ -114,13 +108,12 @@ const notesToStrudelInternal = (
   }
   
   // Auto-detect the optimal quantization that accurately represents all note positions.
-  // This ensures the export matches exactly what the user sees on the grid,
-  // regardless of the current quantization setting in the UI.
-  const optimalQuantize = findOptimalQuantization(melodicNotes, cycleDurationMs)
+  // With slot-based timing, this is exact integer math.
+  const optimalQuantize = findOptimalQuantization(melodicNotes)
   
-  // Determine total number of cycles from recording duration
-  const maxEndTime = Math.max(...melodicNotes.map(n => n.endMs))
-  let totalCycles = Math.ceil(maxEndTime / cycleDurationMs)
+  // Determine total number of cycles from recording duration (using slots)
+  const maxEndSlot = Math.max(...melodicNotes.map(n => n.endSlot))
+  let totalCycles = Math.ceil(maxEndSlot / BASE_SLOTS_PER_CYCLE)
   
   // Cap at MAX_CYCLES
   totalCycles = Math.min(totalCycles, MAX_CYCLES)
@@ -130,21 +123,21 @@ const notesToStrudelInternal = (
   }
   
   const subdivisions = getSubdivisionsPerCycle(optimalQuantize)
-  const slotDurationMs = cycleDurationMs / subdivisions
+  const slotsPerSubdiv = getSlotsPerSubdivision(optimalQuantize)
   
   // Process each cycle
   const cycleNotations: string[] = []
   
   for (let cycle = 0; cycle < totalCycles; cycle++) {
-    const cycleStartMs = cycle * cycleDurationMs
-    const cycleEndMs = (cycle + 1) * cycleDurationMs
+    const cycleStartSlot = cycle * BASE_SLOTS_PER_CYCLE
+    const cycleEndSlot = (cycle + 1) * BASE_SLOTS_PER_CYCLE
     
     // Get notes that are relevant to this cycle
     const cycleNotes = melodicNotes.filter(note => {
       // Note starts within this cycle
-      const startsInCycle = note.startMs >= cycleStartMs && note.startMs < cycleEndMs
+      const startsInCycle = note.startSlot >= cycleStartSlot && note.startSlot < cycleEndSlot
       // Note spans into this cycle from previous
-      const spansIntoCycle = note.startMs < cycleStartMs && note.endMs > cycleStartMs
+      const spansIntoCycle = note.startSlot < cycleStartSlot && note.endSlot > cycleStartSlot
       return startsInCycle || spansIntoCycle
     })
     
@@ -154,26 +147,25 @@ const notesToStrudelInternal = (
       slots.push({ notes: [], heldNotes: [] })
     }
     
-    // Assign each note to slots using direct index calculation
-    // This avoids floating point precision issues with boundary comparisons
+    // Assign each note to slots using direct integer arithmetic
     for (const note of cycleNotes) {
       if (note.midi === undefined) continue
       
-      // Clamp note to cycle boundaries
-      const noteStart = Math.max(note.startMs, cycleStartMs)
-      const noteEnd = Math.min(note.endMs, cycleEndMs)
+      // Clamp note to cycle boundaries (in base slots)
+      const noteStartSlot = Math.max(note.startSlot, cycleStartSlot)
+      const noteEndSlot = Math.min(note.endSlot, cycleEndSlot)
       
-      // Calculate slot indices directly using Math.round for precision
-      const startSlotIndex = Math.round((noteStart - cycleStartMs) / slotDurationMs)
-      const endSlotIndex = Math.round((noteEnd - cycleStartMs) / slotDurationMs)
+      // Convert to subdivision indices within this cycle
+      const startSubdivIndex = Math.floor((noteStartSlot - cycleStartSlot) / slotsPerSubdiv)
+      const endSubdivIndex = Math.floor((noteEndSlot - cycleStartSlot) / slotsPerSubdiv)
       
       // Note starts in its start slot
-      if (startSlotIndex >= 0 && startSlotIndex < subdivisions) {
-        slots[startSlotIndex].notes.push(note.midi)
+      if (startSubdivIndex >= 0 && startSubdivIndex < subdivisions) {
+        slots[startSubdivIndex].notes.push(note.midi)
       }
       
       // Note is held through all subsequent slots until it ends
-      for (let heldSlot = startSlotIndex + 1; heldSlot < endSlotIndex && heldSlot < subdivisions; heldSlot++) {
+      for (let heldSlot = startSubdivIndex + 1; heldSlot < endSubdivIndex && heldSlot < subdivisions; heldSlot++) {
         if (heldSlot >= 0) {
           slots[heldSlot].heldNotes.push(note.midi)
         }
@@ -199,10 +191,11 @@ const notesToStrudelInternal = (
 
 /**
  * Convert drum notes to Strudel mini-notation
+ * Notes use slot-based timing (96 slots per cycle)
  */
 const drumsToStrudel = (
   notes: SequencerNote[],
-  cycleDurationMs: number,
+  _cycleDurationMs: number,
   _quantizeValue: QuantizeValue
 ): string => {
   // Filter to only drum notes with valid drumSound
@@ -213,13 +206,12 @@ const drumsToStrudel = (
   }
   
   // Auto-detect the optimal quantization that accurately represents all note positions.
-  // This ensures the export matches exactly what the user sees on the grid,
-  // regardless of the current quantization setting in the UI.
-  const optimalQuantize = findOptimalQuantization(drumNotes, cycleDurationMs)
+  // With slot-based timing, this is exact integer math.
+  const optimalQuantize = findOptimalQuantization(drumNotes)
   
-  // Determine total number of cycles from recording duration
-  const maxEndTime = Math.max(...drumNotes.map(n => n.endMs))
-  let totalCycles = Math.ceil(maxEndTime / cycleDurationMs)
+  // Determine total number of cycles from recording duration (using slots)
+  const maxEndSlot = Math.max(...drumNotes.map(n => n.endSlot))
+  let totalCycles = Math.ceil(maxEndSlot / BASE_SLOTS_PER_CYCLE)
   
   // Cap at MAX_CYCLES
   totalCycles = Math.min(totalCycles, MAX_CYCLES)
@@ -229,18 +221,18 @@ const drumsToStrudel = (
   }
   
   const subdivisions = getSubdivisionsPerCycle(optimalQuantize)
-  const slotDurationMs = cycleDurationMs / subdivisions
+  const slotsPerSubdiv = getSlotsPerSubdivision(optimalQuantize)
   
   // Process each cycle
   const cycleNotations: string[] = []
   
   for (let cycle = 0; cycle < totalCycles; cycle++) {
-    const cycleStartMs = cycle * cycleDurationMs
-    const cycleEndMs = (cycle + 1) * cycleDurationMs
+    const cycleStartSlot = cycle * BASE_SLOTS_PER_CYCLE
+    const cycleEndSlot = (cycle + 1) * BASE_SLOTS_PER_CYCLE
     
     // Get notes that are relevant to this cycle
     const cycleNotes = drumNotes.filter(note => {
-      const startsInCycle = note.startMs >= cycleStartMs && note.startMs < cycleEndMs
+      const startsInCycle = note.startSlot >= cycleStartSlot && note.startSlot < cycleEndSlot
       return startsInCycle
     })
     
@@ -250,16 +242,14 @@ const drumsToStrudel = (
       slots.push({ sounds: [] })
     }
     
-    // Assign each note to its slot using direct index calculation
-    // This avoids floating point precision issues with boundary comparisons
+    // Assign each note to its slot using direct integer arithmetic
     for (const note of cycleNotes) {
-      // Calculate slot index directly - use Math.round to handle floating point precision
-      const relativeTimeMs = note.startMs - cycleStartMs
-      const slotIndex = Math.round(relativeTimeMs / slotDurationMs)
+      // Calculate subdivision index directly
+      const subdivIndex = Math.floor((note.startSlot - cycleStartSlot) / slotsPerSubdiv)
       
       // Ensure slot is within bounds and add the sound
-      if (slotIndex >= 0 && slotIndex < subdivisions && note.drumSound !== undefined) {
-        slots[slotIndex].sounds.push(note.drumSound)
+      if (subdivIndex >= 0 && subdivIndex < subdivisions && note.drumSound !== undefined) {
+        slots[subdivIndex].sounds.push(note.drumSound)
       }
     }
     

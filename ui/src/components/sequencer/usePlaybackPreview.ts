@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
-import { SequencerNote, CycleInfo, DrumSound } from '../../lib/sequencer/types'
+import { SequencerNote, CycleInfo, DrumSound, BASE_SLOTS_PER_CYCLE } from '../../lib/sequencer/types'
+import { slotToMs } from '../../lib/sequencer/quantization'
 import { STRUDEL_LATENCY_S, STRUDEL_LATENCY_MS } from '../../lib/sequencer/timing'
 
 // @ts-expect-error - Strudel packages don't have TypeScript declarations
@@ -46,11 +47,11 @@ export const usePlaybackPreview = ({
   playDrumAt
 }: UsePlaybackPreviewOptions): UsePlaybackPreviewReturn => {
   // Track which notes have been scheduled for playback
-  // Map<noteId, { midiNumber, scheduledStopTime }>
-  const scheduledNotesRef = useRef<Map<string, { midi: number; stopTime: number }>>(new Map())
+  // Map<noteId, { midiNumber, scheduledStartTime, scheduledStopTime }>
+  const scheduledNotesRef = useRef<Map<string, { midi: number; startTime: number; stopTime: number }>>(new Map())
   
-  // Track which drum notes have been scheduled (by note ID)
-  const scheduledDrumsRef = useRef<Set<string>>(new Set())
+  // Track which drum notes have been scheduled (by note ID -> scheduled audio time)
+  const scheduledDrumsRef = useRef<Map<string, number>>(new Map())
   
   // Track pattern position in ms (across all cycles)
   const lastPatternPositionRef = useRef<number>(0)
@@ -129,6 +130,7 @@ export const usePlaybackPreview = ({
     const currentTime = ac.currentTime
     const { phase: rawPhase, cycleDurationMs } = cycleInfo
     const totalPatternDurationMs = currentCycleCount * cycleDurationMs
+    const totalPatternSlots = currentCycleCount * BASE_SLOTS_PER_CYCLE
     
     // Strudel can return slightly negative phase values when restarting playback
     // Clamp to [0, 1) to prevent negative position calculations
@@ -157,32 +159,19 @@ export const usePlaybackPreview = ({
     // Wrap pattern position to total duration
     patternPosMs = patternPosMs % totalPatternDurationMs
     
-    // Detect pattern wrap-around
-    const didPatternWrap = patternPosMs < lastPatternPositionRef.current - (cycleDurationMs * 0.5)
-    
-    if (didPatternWrap) {
-      // Pattern wrapped back to start - clear scheduled notes for new cycle
-      // This allows the same notes to be re-triggered at the start of the next loop
-      scheduledDrumsRef.current.clear()
-      scheduledNotesRef.current.clear()
-    }
-    
     // Calculate lookahead window
     // We look ahead by STRUDEL_LATENCY_MS to schedule notes before they should play
     const lookAheadMs = STRUDEL_LATENCY_MS
     const lookAheadEndMs = (patternPosMs + lookAheadMs) % totalPatternDurationMs
     const lookAheadWraps = (patternPosMs + lookAheadMs) >= totalPatternDurationMs
     
-    // On the first frame after playback starts, OR after pattern wrap, we may have
-    // "jumped" past position 0. We need to catch up and schedule any notes we missed
-    // at the beginning.
+    // On the first frame, catch up on any notes we missed (Strudel might already be mid-cycle)
     const isFirstFrame = isFirstSyncFrameRef.current
     if (isFirstFrame) {
       isFirstSyncFrameRef.current = false
     }
     
-    // Treat pattern wrap the same as first frame - need to catch notes from 0
-    const needsCatchUp = isFirstFrame || didPatternWrap
+    const needsCatchUp = isFirstFrame
     
     // Update tracking
     lastPatternPositionRef.current = patternPosMs
@@ -206,13 +195,22 @@ export const usePlaybackPreview = ({
     // ===============================
     // Schedule Drum Notes (one-shot)
     // ===============================
+    
+    // Clean up drums that have already played
+    for (const [noteId, scheduledTime] of scheduledDrumsRef.current.entries()) {
+      if (currentTime > scheduledTime + 0.1) {
+        scheduledDrumsRef.current.delete(noteId)
+      }
+    }
+    
     for (const note of drumNotes) {
       if (!note.drumSound) continue
       
       const noteId = note.id
       if (scheduledDrumsRef.current.has(noteId)) continue
       
-      const noteStartMs = note.startMs % totalPatternDurationMs
+      // Convert slot to ms for scheduling
+      const noteStartMs = slotToMs(note.startSlot % totalPatternSlots, cycleDurationMs)
       
       // Check if note is within lookahead window
       let shouldSchedule = false
@@ -266,7 +264,8 @@ export const usePlaybackPreview = ({
           setTimeout(() => currentPlayDrum(drumSound), Math.max(0, msDelay))
         }
         
-        scheduledDrumsRef.current.add(noteId)
+        // Track with scheduled time so we can clean up after it plays
+        scheduledDrumsRef.current.set(noteId, targetAudioTime)
       }
     }
     
@@ -279,8 +278,9 @@ export const usePlaybackPreview = ({
       const noteId = note.id
       const isScheduled = scheduledNotesRef.current.has(noteId)
       
-      const noteStartMs = note.startMs % totalPatternDurationMs
-      const noteDurationMs = note.endMs - note.startMs
+      // Convert slots to ms for scheduling
+      const noteStartMs = slotToMs(note.startSlot % totalPatternSlots, cycleDurationMs)
+      const noteDurationMs = slotToMs(note.endSlot - note.startSlot, cycleDurationMs)
       
       // Check if note START is within lookahead window
       let shouldScheduleStart = false
@@ -349,7 +349,7 @@ export const usePlaybackPreview = ({
           setTimeout(() => stopNoteRef.current(midi), Math.max(0, msDelay))
         }
         
-        scheduledNotesRef.current.set(noteId, { midi: note.midi, stopTime: stopAudioTime })
+        scheduledNotesRef.current.set(noteId, { midi: note.midi, startTime: startAudioTime, stopTime: stopAudioTime })
       }
       
       // Clean up notes that have finished playing

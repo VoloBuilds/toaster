@@ -7,9 +7,10 @@ import {
   DRUM_SOUNDS,
   DEFAULT_CYCLE_DURATION_MS,
   PIANO_MIDI_MIN,
-  PIANO_MIDI_MAX
+  PIANO_MIDI_MAX,
+  BASE_SLOTS_PER_CYCLE
 } from '../../../lib/sequencer/types'
-import { getSubdivisionsPerCycle } from '../../../lib/sequencer/quantization'
+import { getSlotsPerSubdivision, msToSlot, floorSlotToGrid, snapSlotToGrid } from '../../../lib/sequencer/quantization'
 import { DrawingState } from './useGridRenderer'
 
 // Shared options for interaction utilities
@@ -27,8 +28,9 @@ export interface InteractionUtilsOptions {
 // Return type for the hook
 export interface InteractionUtilsReturn {
   // Quantization helpers
-  getSlotDurationMs: () => number
-  snapToGrid: (ms: number) => number
+  getSlotDurationMs: () => number  // Still needed for pixel calculations
+  getSlotsPerSubdiv: () => number  // How many base slots per quantize unit
+  snapToSlot: (slot: number) => number  // Snap a slot to grid
   getTapThreshold: () => number
   
   // Drawing helpers
@@ -40,27 +42,27 @@ export interface InteractionUtilsReturn {
     createNote: (noteData: Omit<SequencerNote, 'id'>) => void
   ) => void
   
-  // Note movement helpers
+  // Note movement helpers - now works in slot space
   calculateMoveDelta: (
     startPos: { x: number; y: number },
     currentPos: { x: number; y: number }
-  ) => { deltaMs: number; deltaRow: number }
+  ) => { deltaSlots: number; deltaRow: number }
   
   applyMoveToNote: (
     note: SequencerNote,
-    deltaMs: number,
+    deltaSlots: number,
     deltaRow: number
   ) => Partial<Omit<SequencerNote, 'id'>>
   
-  // Resize helpers
+  // Resize helpers - now works in slot space
   calculateResizeStart: (
     originalNote: SequencerNote,
-    deltaMs: number
+    deltaSlots: number
   ) => number
   
   calculateResizeEnd: (
     originalNote: SequencerNote,
-    deltaMs: number
+    deltaSlots: number
   ) => number
   
   // Validation
@@ -78,19 +80,25 @@ export const useInteractionUtils = ({
   yToRow
 }: InteractionUtilsOptions): InteractionUtilsReturn => {
   
-  // Get the duration of one quantize slot in ms
+  // Get the duration of one quantize slot in ms (for pixel calculations)
   const getSlotDurationMs = useCallback(() => {
     const cycleInfo = getCycleInfo()
     const cycleDurationMs = cycleInfo?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
-    const subdivisions = getSubdivisionsPerCycle(quantizeValue)
-    return cycleDurationMs / subdivisions
+    const slotsPerSubdiv = getSlotsPerSubdivision(quantizeValue)
+    // Each subdivision is slotsPerSubdiv base slots
+    // So slotDurationMs = cycleDurationMs / BASE_SLOTS_PER_CYCLE * slotsPerSubdiv
+    return (cycleDurationMs / BASE_SLOTS_PER_CYCLE) * slotsPerSubdiv
   }, [getCycleInfo, quantizeValue])
   
-  // Snap a time value to the grid
-  const snapToGrid = useCallback((ms: number) => {
-    const slotDurationMs = getSlotDurationMs()
-    return Math.round(ms / slotDurationMs) * slotDurationMs
-  }, [getSlotDurationMs])
+  // Get how many base slots per quantize subdivision
+  const getSlotsPerSubdiv = useCallback(() => {
+    return getSlotsPerSubdivision(quantizeValue)
+  }, [quantizeValue])
+  
+  // Snap a base slot to the grid
+  const snapToSlot = useCallback((slot: number) => {
+    return snapSlotToGrid(slot, quantizeValue)
+  }, [quantizeValue])
   
   // Calculate tap threshold (50% of one quantize slot width in pixels)
   const getTapThreshold = useCallback(() => {
@@ -110,20 +118,25 @@ export const useInteractionUtils = ({
   }, [mode, midiOffset])
   
   // Get drawing state for a position (used to start drawing)
+  // Returns slot-based DrawingState
   const getDrawingStateForPosition = useCallback((pos: { x: number; y: number }): DrawingState | null => {
-    const slotDurationMs = getSlotDurationMs()
+    const cycleInfo = getCycleInfo()
+    const cycleDurationMs = cycleInfo?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
+    const slotsPerSubdiv = getSlotsPerSubdivision(quantizeValue)
+    
     const rawTimeMs = xToTimeMs(pos.x)
-    const snappedStartMs = Math.floor(rawTimeMs / slotDurationMs) * slotDurationMs
+    const rawSlot = msToSlot(rawTimeMs, cycleDurationMs)
+    const startSlot = floorSlotToGrid(Math.max(0, rawSlot), quantizeValue)
     const row = yToRow(pos.y)
     
     if (!isValidRow(row)) return null
     
     return {
       row,
-      startMs: Math.max(0, snappedStartMs),
-      currentEndMs: Math.max(0, snappedStartMs) + slotDurationMs
+      startSlot: startSlot,
+      currentEndSlot: startSlot + slotsPerSubdiv
     }
-  }, [getSlotDurationMs, xToTimeMs, yToRow, isValidRow])
+  }, [getCycleInfo, quantizeValue, xToTimeMs, yToRow, isValidRow])
   
   // Create a note from drawing state
   const createNoteFromDrawingState = useCallback((
@@ -136,8 +149,8 @@ export const useInteractionUtils = ({
         createNote({
           type: 'drum',
           drumSound,
-          startMs: drawingState.startMs,
-          endMs: drawingState.currentEndMs
+          startSlot: drawingState.startSlot,
+          endSlot: drawingState.currentEndSlot
         })
       }
     } else {
@@ -146,39 +159,45 @@ export const useInteractionUtils = ({
         createNote({
           type: 'notes',
           midi,
-          startMs: drawingState.startMs,
-          endMs: drawingState.currentEndMs
+          startSlot: drawingState.startSlot,
+          endSlot: drawingState.currentEndSlot
         })
       }
     }
   }, [mode, midiOffset])
   
-  // Calculate delta for note movement
+  // Calculate delta for note movement - now returns slot delta
   const calculateMoveDelta = useCallback((
     startPos: { x: number; y: number },
     currentPos: { x: number; y: number }
   ) => {
+    const cycleInfo = getCycleInfo()
+    const cycleDurationMs = cycleInfo?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
+    
     const deltaX = currentPos.x - startPos.x
     const deltaY = currentPos.y - startPos.y
     const deltaMs = deltaX / pixelsPerMs
+    // Convert ms delta to slot delta
+    const deltaSlots = Math.round((deltaMs / cycleDurationMs) * BASE_SLOTS_PER_CYCLE)
     const deltaRow = -Math.round(deltaY / laneHeight)
-    return { deltaMs, deltaRow }
-  }, [pixelsPerMs, laneHeight])
+    return { deltaSlots, deltaRow }
+  }, [pixelsPerMs, laneHeight, getCycleInfo])
   
-  // Apply movement delta to a note
+  // Apply movement delta to a note (now works in slot space)
   const applyMoveToNote = useCallback((
     note: SequencerNote,
-    deltaMs: number,
+    deltaSlots: number,
     deltaRow: number
   ): Partial<Omit<SequencerNote, 'id'>> => {
-    const newStartMs = snapToGrid(Math.max(0, note.startMs + deltaMs))
-    const duration = note.endMs - note.startMs
+    const rawNewStart = note.startSlot + deltaSlots
+    const newStartSlot = snapSlotToGrid(Math.max(0, rawNewStart), quantizeValue)
+    const duration = note.endSlot - note.startSlot
     
     if (mode === 'notes' && note.midi !== undefined) {
       const newMidi = Math.max(PIANO_MIDI_MIN, Math.min(PIANO_MIDI_MAX - 1, note.midi + deltaRow))
       return {
-        startMs: newStartMs,
-        endMs: newStartMs + duration,
+        startSlot: newStartSlot,
+        endSlot: newStartSlot + duration,
         midi: newMidi
       }
     } else if (mode === 'drum' && note.drumSound) {
@@ -186,42 +205,45 @@ export const useInteractionUtils = ({
       const newRowIndex = Math.max(0, Math.min(DRUM_SOUNDS.length - 1, currentRowIndex + deltaRow))
       const newDrumSound = DRUM_SOUNDS[newRowIndex].key
       return {
-        startMs: newStartMs,
-        endMs: newStartMs + duration,
+        startSlot: newStartSlot,
+        endSlot: newStartSlot + duration,
         drumSound: newDrumSound
       }
     }
     
-    return { startMs: newStartMs, endMs: newStartMs + duration }
-  }, [mode, snapToGrid])
+    return { startSlot: newStartSlot, endSlot: newStartSlot + duration }
+  }, [mode, quantizeValue])
   
-  // Calculate new start time for left resize
+  // Calculate new start slot for left resize
   const calculateResizeStart = useCallback((
     originalNote: SequencerNote,
-    deltaMs: number
+    deltaSlots: number
   ): number => {
-    const slotDurationMs = getSlotDurationMs()
-    return snapToGrid(Math.max(0, Math.min(
-      originalNote.endMs - slotDurationMs,
-      originalNote.startMs + deltaMs
-    )))
-  }, [getSlotDurationMs, snapToGrid])
+    const slotsPerSubdiv = getSlotsPerSubdivision(quantizeValue)
+    const rawNewStart = originalNote.startSlot + deltaSlots
+    return snapSlotToGrid(Math.max(0, Math.min(
+      originalNote.endSlot - slotsPerSubdiv,
+      rawNewStart
+    )), quantizeValue)
+  }, [quantizeValue])
   
-  // Calculate new end time for right resize
+  // Calculate new end slot for right resize
   const calculateResizeEnd = useCallback((
     originalNote: SequencerNote,
-    deltaMs: number
+    deltaSlots: number
   ): number => {
-    const slotDurationMs = getSlotDurationMs()
-    return snapToGrid(Math.max(
-      originalNote.startMs + slotDurationMs,
-      originalNote.endMs + deltaMs
-    ))
-  }, [getSlotDurationMs, snapToGrid])
+    const slotsPerSubdiv = getSlotsPerSubdivision(quantizeValue)
+    const rawNewEnd = originalNote.endSlot + deltaSlots
+    return snapSlotToGrid(Math.max(
+      originalNote.startSlot + slotsPerSubdiv,
+      rawNewEnd
+    ), quantizeValue)
+  }, [quantizeValue])
   
   return {
     getSlotDurationMs,
-    snapToGrid,
+    getSlotsPerSubdiv,
+    snapToSlot,
     getTapThreshold,
     getDrawingStateForPosition,
     createNoteFromDrawingState,

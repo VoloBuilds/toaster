@@ -10,7 +10,7 @@ import {
   DEFAULT_CYCLE_DURATION_MS,
   DRUM_SOUNDS
 } from '../../lib/sequencer/types'
-import { getSubdivisionsPerCycle } from '../../lib/sequencer/quantization'
+import { getSlotsPerSubdivision, floorSlotToGrid, msToSlot } from '../../lib/sequencer/quantization'
 
 const CANVAS_WIDTH = MONITOR_CANVAS_WIDTH
 const CANVAS_HEIGHT = MONITOR_CANVAS_HEIGHT
@@ -52,7 +52,8 @@ export const SequencerGrid = () => {
   const coordinates = useGridCoordinates({
     mode,
     viewState,
-    canvasRef
+    canvasRef,
+    cycleDurationMs
   })
   
   const { laneHeight, pixelsPerMs, getNoteRect, getTouchPosOnCanvas } = coordinates
@@ -153,15 +154,14 @@ export const SequencerGrid = () => {
     const rowFromTop = Math.floor(normalizedY * effectiveRows)
     const row = effectiveRows - 1 - rowFromTop // Invert for bottom-to-top indexing
     
-    // Calculate slot duration for note length
-    const cycleInfo = getCycleInfo()
-    const currentCycleDurationMs = cycleInfo?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
-    const subdivisions = getSubdivisionsPerCycle(quantizeValue)
-    const slotDurationMs = currentCycleDurationMs / subdivisions
+    // Calculate slot for note position using slot-based timing
+    const currentCycleDurationMs = getCycleInfo()?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
+    const slotsPerSubdiv = getSlotsPerSubdivision(quantizeValue)
     
     // Create note at the first frame (time = 0, or the current view's start if scrolled)
-    // Use timeOffsetMs as the start if the view is scrolled, but snap to grid
-    const snappedStartMs = Math.floor(timeOffsetMs / slotDurationMs) * slotDurationMs
+    // Use timeOffsetMs converted to slots and snap to grid
+    const rawSlot = msToSlot(timeOffsetMs, currentCycleDurationMs)
+    const snappedStartSlot = floorSlotToGrid(rawSlot, quantizeValue)
     
     if (mode === 'drum') {
       const drumSound = DRUM_SOUNDS[row]
@@ -169,8 +169,8 @@ export const SequencerGrid = () => {
         createNote({
           type: 'drum',
           drumSound: drumSound.key,
-          startMs: snappedStartMs,
-          endMs: snappedStartMs + slotDurationMs
+          startSlot: snappedStartSlot,
+          endSlot: snappedStartSlot + slotsPerSubdiv
         })
       }
     } else {
@@ -178,8 +178,8 @@ export const SequencerGrid = () => {
       createNote({
         type: 'notes',
         midi,
-        startMs: snappedStartMs,
-        endMs: snappedStartMs + slotDurationMs
+        startSlot: snappedStartSlot,
+        endSlot: snappedStartSlot + slotsPerSubdiv
       })
     }
     
@@ -206,14 +206,13 @@ export const SequencerGrid = () => {
       />
       
       {/* First frame extension zone - makes it easier to click on the first grid column */}
-      {/* Positioned to overlap the right portion of the sidebar where labels don't reach */}
+      {/* Only covers the leftmost edge of the sidebar to avoid overlapping with label text */}
       <div
         className="absolute top-0 bottom-0 cursor-crosshair z-10"
         style={{
-          // Position from the left edge of the sidebar, leaving room for label text
-          left: mode === 'drum' ? '8px' : '4px',
-          // Width extends from left of labels to just past the sidebar border
-          width: mode === 'drum' ? '50px' : '28px',
+          left: 0,
+          // Narrow zone on the left edge only - labels are right-aligned so this avoids overlap
+          width: mode === 'drum' ? '18px' : '12px',
         }}
         onMouseDown={handleFirstFrameZoneClick}
       />

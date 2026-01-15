@@ -1,5 +1,10 @@
 // Type definitions for the sequencer feature
 
+// Base resolution: 96 slots per cycle (LCM of all quantization subdivisions)
+// This allows exact integer math for all quantize values:
+// 1/4=24, 1/4T=16, 1/8=12, 1/8T=8, 1/16=6, 1/16T=4, 1/32=3, 1/32T=2
+export const BASE_SLOTS_PER_CYCLE = 96
+
 // Sequencer modes
 export type SequencerMode = 'notes' | 'drum'
 
@@ -29,6 +34,7 @@ export const DRUM_SOUNDS: DrumSoundConfig[] = [
 ]
 
 // Sequencer note - supports both notes and drum modes
+// Timing uses slot-based system (96 slots per cycle) for precision
 export interface SequencerNote {
   id: string
   type: 'notes' | 'drum'
@@ -36,9 +42,9 @@ export interface SequencerNote {
   midi?: number
   // For drum mode
   drumSound?: DrumSound
-  // Timing (both modes)
-  startMs: number
-  endMs: number
+  // Timing (both modes) - slot indices at BASE_SLOTS_PER_CYCLE resolution
+  startSlot: number
+  endSlot: number
 }
 
 export type QuantizeValue = '1/4' | '1/8' | '1/16' | '1/32' | '1/4T' | '1/8T' | '1/16T' | '1/32T'

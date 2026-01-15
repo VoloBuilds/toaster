@@ -10,8 +10,10 @@ import {
   MIN_VISIBLE_SEMITONES,
   MAX_VISIBLE_SEMITONES,
   MIN_VISIBLE_DURATION_CYCLES,
-  SequencerViewState
+  SequencerViewState,
+  BASE_SLOTS_PER_CYCLE
 } from '../../../lib/sequencer/types'
+import { slotToMs } from '../../../lib/sequencer/quantization'
 import { NoteHit } from './useGridCoordinates'
 import { DrawingState, BoxSelectState } from './useGridRenderer'
 import { useInteractionUtils } from './useInteractionUtils'
@@ -173,6 +175,7 @@ export const useGridInteractions = ({
     pixelsPerMs,
     getTouchPosOnCanvas,
     findNoteAtPosition,
+    getCycleInfo,
     utils
   })
   
@@ -334,13 +337,16 @@ export const useGridInteractions = ({
     if (boxSelectState) {
       setBoxSelectState(prev => prev ? { ...prev, currentX: pos.x, currentY: pos.y } : null)
     } else if (drawingState) {
-      const slotDurationMs = utils.getSlotDurationMs()
-      const rawTimeMs = xToTimeMs(pos.x)
-      const snappedEndMs = utils.snapToGrid(rawTimeMs)
-      const newEndMs = Math.max(drawingState.startMs + slotDurationMs, snappedEndMs)
-      setDrawingState(prev => prev ? { ...prev, currentEndMs: newEndMs } : null)
+      // Drawing now uses slots
+      const slotsPerSubdiv = utils.getSlotsPerSubdiv()
+      const rawSlot = utils.snapToSlot(
+        Math.round((xToTimeMs(pos.x) / (getCycleInfo()?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS)) * BASE_SLOTS_PER_CYCLE)
+      )
+      const newEndSlot = Math.max(drawingState.startSlot + slotsPerSubdiv, rawSlot)
+      setDrawingState(prev => prev ? { ...prev, currentEndSlot: newEndSlot } : null)
     } else if (dragState) {
-      const { deltaMs, deltaRow } = utils.calculateMoveDelta(
+      // Movement now uses slots
+      const { deltaSlots, deltaRow } = utils.calculateMoveDelta(
         { x: dragState.startX, y: dragState.startY },
         pos
       )
@@ -357,7 +363,7 @@ export const useGridInteractions = ({
         // The explicit `{ id: _id, ...noteWithoutId }` destructure ensures `id` is truly excluded at runtime.
         const previewNotes: Omit<SequencerNote, 'id'>[] = dragState.originalNotes.map(originalNote => {
           const { id: _id, ...noteWithoutId } = originalNote
-          const updates = utils.applyMoveToNote(originalNote, deltaMs, deltaRow)
+          const updates = utils.applyMoveToNote(originalNote, deltaSlots, deltaRow)
           return { ...noteWithoutId, ...updates }
         })
         setCopyPreviewNotes(previewNotes)
@@ -366,17 +372,17 @@ export const useGridInteractions = ({
         
         if (dragState.type === 'group-move' || dragState.type === 'move') {
           for (const originalNote of dragState.originalNotes) {
-            const updates = utils.applyMoveToNote(originalNote, deltaMs, deltaRow)
+            const updates = utils.applyMoveToNote(originalNote, deltaSlots, deltaRow)
             updateNote(originalNote.id, updates)
           }
         } else if (dragState.type === 'resize-left' && dragState.originalNotes.length === 1) {
           const originalNote = dragState.originalNotes[0]
-          const newStartMs = utils.calculateResizeStart(originalNote, deltaMs)
-          updateNote(originalNote.id, { startMs: newStartMs })
+          const newStartSlot = utils.calculateResizeStart(originalNote, deltaSlots)
+          updateNote(originalNote.id, { startSlot: newStartSlot })
         } else if (dragState.type === 'resize-right' && dragState.originalNotes.length === 1) {
           const originalNote = dragState.originalNotes[0]
-          const newEndMs = utils.calculateResizeEnd(originalNote, deltaMs)
-          updateNote(originalNote.id, { endMs: newEndMs })
+          const newEndSlot = utils.calculateResizeEnd(originalNote, deltaSlots)
+          updateNote(originalNote.id, { endSlot: newEndSlot })
         }
       }
     } else {
@@ -390,7 +396,7 @@ export const useGridInteractions = ({
         setCursorStyle('crosshair')
       }
     }
-  }, [boxSelectState, drawingState, dragState, getMousePosOnCanvas, findNoteAtPosition, utils, updateNote, xToTimeMs, notes])
+  }, [boxSelectState, drawingState, dragState, getMousePosOnCanvas, findNoteAtPosition, utils, updateNote, xToTimeMs, notes, getCycleInfo])
   
   const handleMouseUp = useCallback(() => {
     try {
@@ -409,7 +415,9 @@ export const useGridInteractions = ({
         setBoxSelectState(null)
       } else if (drawingState) {
         utils.createNoteFromDrawingState(drawingState, createNote)
-        setCursorPositionMs(drawingState.startMs)
+        // Convert slot to ms for cursor position
+        const cycleDurationMs = getCycleInfo()?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
+        setCursorPositionMs(slotToMs(drawingState.startSlot, cycleDurationMs))
         setDrawingState(null)
         setCursorStyle('crosshair')
       } else if (dragState && dragState.copying && copyPreviewNotes.length > 0) {
@@ -426,7 +434,7 @@ export const useGridInteractions = ({
       setDragState(null)
       setCopyPreviewNotes([])
     }
-  }, [boxSelectState, drawingState, dragState, copyPreviewNotes, findNotesInRect, notes, selectedNoteIds, setSelectedNoteIds, utils, createNote, createNotes, setCursorPositionMs, endBatchUpdate])
+  }, [boxSelectState, drawingState, dragState, copyPreviewNotes, findNotesInRect, notes, selectedNoteIds, setSelectedNoteIds, utils, createNote, createNotes, setCursorPositionMs, endBatchUpdate, getCycleInfo])
   
   const handleMouseLeave = useCallback(() => {
     try {
@@ -445,7 +453,9 @@ export const useGridInteractions = ({
       
       if (drawingState) {
         utils.createNoteFromDrawingState(drawingState, createNote)
-        setCursorPositionMs(drawingState.startMs)
+        // Convert slot to ms for cursor position
+        const cycleDurationMs = getCycleInfo()?.cycleDurationMs || DEFAULT_CYCLE_DURATION_MS
+        setCursorPositionMs(slotToMs(drawingState.startSlot, cycleDurationMs))
       }
     } finally {
       // Always end batch update if we were in a non-copying drag operation
@@ -460,7 +470,7 @@ export const useGridInteractions = ({
       setHoveredNoteId(null)
       setCursorStyle('default')
     }
-  }, [boxSelectState, drawingState, dragState, utils, createNote, findNotesInRect, setSelectedNoteIds, setCursorPositionMs, endBatchUpdate, notes])
+  }, [boxSelectState, drawingState, dragState, utils, createNote, findNotesInRect, setSelectedNoteIds, setCursorPositionMs, endBatchUpdate, notes, getCycleInfo, selectedNoteIds])
   
   // ==========================================
   // Keyboard Handlers
