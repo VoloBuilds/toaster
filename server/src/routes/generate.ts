@@ -98,11 +98,11 @@ Only return raw Strudel code, no explanations or markdown.`
 
   const completion = await openai.chat.completions.create({
     //TODO: Not sure why the env.OPENROUTER_MODEL is getting ignored
-    // model: 'x-ai/grok-4-fast',
+    // model: 'x-ai/grok-4.1-fast',
     // model: env.OPENROUTER_MODEL || 'google/gemini-2.5-flash',
-    model: 'google/gemini-3-flash-preview',
-    // model: 'anthropic/claude-opus-4.5', // It's seriously amazing but x10 more expensive
+    model: 'google/gemini-2.5-flash',
     // model: 'google/gemini-2.5-flash-preview-09-2025', // This was the best one :( but now deprecated
+    // model: 'anthropic/claude-haiku-4.5',
     messages: [
       { role: 'system', content: systemPrompt },
       // { //Anthropic-specific prompt caching
@@ -118,6 +118,9 @@ Only return raw Strudel code, no explanations or markdown.`
       // },
       { role: 'user', content: userMessage }
     ],
+    // reasoning: {
+    //   enabled: false
+    // },
     temperature: 0.7,
     // max_tokens: 2000,
   })
