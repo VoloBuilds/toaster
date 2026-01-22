@@ -83,7 +83,7 @@ Understanding the difference between notes and sounds is fundamental to avoiding
      .s("sawtooth")
    \`\`\`
 
-3. **\`note()\` with letter names doesn't use \`.scale()\`:**
+3. **\`note()\` with letter names doesn't use \`.scale()\`:** (IMPORTANT)
    \`\`\`js
    note("a3 [c4 e4] ~ g3 ~ [f3 e3]")  // ✅ Absolute pitches, creates control patterns
      .s("sawtooth")

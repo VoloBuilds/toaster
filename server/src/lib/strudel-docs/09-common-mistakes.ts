@@ -129,6 +129,22 @@ note("<[c,eb,g,bb]!2 [f,ab,c4,eb4] [g,bb,d4,f4]>").s("piano")  // ✅ Manual not
 - Use \`chord()\` when you want automatic voicing, inversions, and jazz-style voicings with \`.dict('ireal')\`
 - Use \`note()\` when you want exact control over which notes and octaves play
 
+### .mode() Only Works with .chord(), Not .scale()
+
+**❌ WRONG - Using .mode() after .scale():**
+\`\`\`js
+n("[0 2 4 6]").scale("C:lydian").mode("above:c2").voicing()  // ❌ .mode() is not for scales!
+n("0 2 4").scale("D:minor").mode("below:d4").voicing()       // ❌ Wrong context!
+\`\`\`
+
+**✅ CORRECT - .mode() is a VOICING function for chords:**
+\`\`\`js
+n("0 1 2 3").chord("Cm").mode("above:c3").voicing()  // ✅ mode() with chord()
+chord("<Cm7 Fm7 Gm7>").mode("below:c4").voicing()    // ✅ Voicing constraint
+\`\`\`
+
+**Why:** \`.mode("above:c3")\` and \`.mode("below:c4")\` are **voicing constraints** that tell \`.voicing()\` where to place chord notes. They only make sense with \`.chord()\`, which defines chord structures. \`.scale()\` just maps scale degrees to notes—it has no chord voicings to constrain.
+
 ### Non-Existent Sounds
 
 **❌ WRONG:**
@@ -172,7 +188,27 @@ $: s("bd*4").room(0).roomsize(0).orbit(1)
 
 **Why:** Each orbit has ONE delay and ONE reverb. If multiple patterns use the same orbit with different settings, the last pattern's settings win, causing unexpected results.
 Also, you should use orbit in a way where one instrument occupies an orbit and other duck that orbit (see duck instructions).
+`+
+`
+### Missing $: for Multiple Instruments
 
+**❌ WRONG - Only the last pattern plays!**
+\`\`\`js
+n("[0 2] ~ 4 [6 7]").scale("C:lydian").s("gm_electric_guitar_clean")
+
+s("bd*4, hh*8")  // Only this plays - the guitar pattern is lost!
+\`\`\`
+
+**✅ CORRECT - Use $: before each pattern:**
+\`\`\`js
+$: n("[0 2] ~ 4 [6 7]").scale("C:lydian").s("gm_electric_guitar_clean")
+
+$: s("bd*4, hh*8")  // Now both play together!
+\`\`\`
+
+**Why:** Without \`$:\`, each line replaces the previous pattern. The \`$:\` prefix registers each pattern as a separate track, allowing multiple instruments to play simultaneously. Always use \`$:\` when you have more than one pattern.
+`
++`
 ### Commenting Out Tracks (Silencing & muting)
 
 \`\`\`js
@@ -478,5 +514,6 @@ Before generating patterns, check:
 - [ ] NOT using \`.note()\` after \`n().scale()\` (n() already creates notes)?
 - [ ] Leveraging euclidean rhythms \`(3,8)\`, \`(5,8)\` etc. for natural, musical grooves?
 - [ ] When commenting out tracks: using \`//$:\` (not \`$: //\`) to silence a track?
+- [ ] Using \`$:\` before each pattern when multiple instruments play together?
 `;
 

@@ -11,6 +11,12 @@ import { registerSoundfonts } from '@strudel/soundfonts'
 import { transpiler } from '@strudel/transpiler'
 import { undo, redo } from '@codemirror/commands'
 
+export interface CycleInfo {
+  cps: number // cycles per second
+  phase: number // current position within cycle (0-1)
+  cycleDurationMs: number // duration of one cycle in ms
+}
+
 interface StrudelEditorProps {
   initialCode: string
   onCodeChange?: (code: string) => void
@@ -25,9 +31,10 @@ interface StrudelEditorProps {
   onClearReady?: (clearFn: () => void) => void
   onStrudelError?: (error: string) => void
   onCodeEvaluated?: () => void
+  onCycleInfoReady?: (getCycleInfoFn: () => CycleInfo | null) => void
 }
 
-const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, onGetCurrentCode, onPlayStateChange, onAnalyserReady, onInitStateChange, onUndoReady, onRedoReady, onClearReady, onStrudelError, onCodeEvaluated }: StrudelEditorProps) => {
+const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, onGetCurrentCode, onPlayStateChange, onAnalyserReady, onInitStateChange, onUndoReady, onRedoReady, onClearReady, onStrudelError, onCodeEvaluated, onCycleInfoReady }: StrudelEditorProps) => {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
   const [isInitializing, setIsInitializing] = useState(false)
@@ -43,10 +50,21 @@ const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, on
     clear: () => void
     onEval?: () => void
     editor?: any
+    // Access to internal repl scheduler (Cyclist instance)
+    repl?: {
+      scheduler?: {
+        now: () => number
+        cps: number
+        started: boolean
+        latency: number
+      }
+    }
   } | null>(null)
   const initializationRef = useRef(false) // Prevent double initialization
   const analyserRef = useRef<AnalyserNode | null>(null)
   const strudelLogListenerRef = useRef<((e: Event) => void) | null>(null)
+  const playStartTimeRef = useRef<number>(0) // Track when playback started - fallback only
+  const cpsRef = useRef<number>(0.5) // Default CPS - fallback when scheduler not accessible
 
   useEffect(() => {
     // Initialize StrudelMirror when component mounts - only once
@@ -257,6 +275,10 @@ const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, on
             },
             onToggle: (started: boolean) => {
               setIsPlaying(started)
+              if (started) {
+                // Track when playback started for cycle phase calculation
+                playStartTimeRef.current = getAudioContext().currentTime
+              }
             },
             onEval: () => {
               // This will be updated via a separate effect
@@ -320,6 +342,62 @@ const StrudelEditor = ({ initialCode, onCodeChange, onPlayReady, onStopReady, on
             onClearReady(() => {
               if (strudelMirrorRef.current) {
                 strudelMirrorRef.current.setCode('')
+              }
+            })
+          }
+          
+          // Expose getCycleInfo function to parent
+          // This uses Strudel's internal scheduler for accurate timing
+          if (onCycleInfoReady) {
+            onCycleInfoReady((): CycleInfo | null => {
+              // Only return null if editor isn't initialized at all
+              if (!strudelMirrorRef.current) {
+                return null
+              }
+              
+              try {
+                // Try to access scheduler directly from repl
+                // StrudelMirror wraps a repl which has a scheduler (Cyclist)
+                const scheduler = (strudelMirrorRef.current as any)?.repl?.scheduler
+                
+                if (scheduler && typeof scheduler.now === 'function') {
+                  // Use scheduler directly - this is the accurate path
+                  const cps = scheduler.cps || 0.5
+                  const cycleDurationMs = 1000 / cps
+                  
+                  if (!scheduler.started) {
+                    return { cps, phase: 0, cycleDurationMs }
+                  }
+                  
+                  // scheduler.now() returns current position in cycles (e.g., 2.75 = cycle 2, 75% through)
+                  const nowCycles = scheduler.now()
+                  const phase = nowCycles % 1
+                  
+                  return { cps, phase, cycleDurationMs }
+                }
+                
+                // Fallback: calculate from audio context time (less accurate)
+                const context = getAudioContext()
+                const cps = cpsRef.current
+                const cycleDurationMs = 1000 / cps
+                
+                // When not playing, return default timing (phase 0)
+                if (!playStartTimeRef.current) {
+                  return { cps, phase: 0, cycleDurationMs }
+                }
+                
+                const currentTime = context.currentTime
+                const elapsedTime = currentTime - playStartTimeRef.current
+                
+                // Calculate current phase within cycle (0-1)
+                const totalCycles = elapsedTime * cps
+                const phase = totalCycles % 1
+                
+                return { cps, phase, cycleDurationMs }
+              } catch {
+                // Return defaults on error
+                const cps = cpsRef.current
+                return { cps, phase: 0, cycleDurationMs: 1000 / cps }
               }
             })
           }

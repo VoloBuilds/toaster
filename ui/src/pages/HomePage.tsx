@@ -1,10 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '../components/ui/button'
 import { Textarea } from '../components/ui/textarea'
-import { Loader2, Mic, MicOff, Play, Square, Share2, Check, Undo, Redo, AlertTriangle, Wrench } from 'lucide-react'
-import StrudelEditor from '../components/StrudelEditor'
+import { Loader2, Mic, MicOff, Play, Square, Share2, Check, Undo, Redo, AlertTriangle, Wrench, KeyboardMusic } from 'lucide-react'
+import StrudelEditor, { CycleInfo } from '../components/StrudelEditor'
 import HalVisualization from '../components/HalVisualization'
 import ClearButton from '../components/ClearButton'
+import { SequencerConsole } from '../components/sequencer'
+// EXPERIMENTAL: Hum-to-melody feature - uncomment to enable
+// import MelodyInput from '../experimental/pitch/MelodyInput'
 
 // const DEFAULT_CODE = `// Welcome to Toaster! Try this example or generate your own with AI below.
 // note("c3 e3 g3 c4").s("sine").lpf(800).room(.2).color("red")._scope()`
@@ -35,12 +38,14 @@ const HomePage = () => {
   const [showCopiedMessage, setShowCopiedMessage] = useState(false)
   const [strudelError, setStrudelError] = useState<string | null>(null)
   const [isFixing, setIsFixing] = useState(false)
+  const [isSequencerOpen, setIsSequencerOpen] = useState(false)
   const editorPlayRef = useRef<(() => void) | null>(null)
   const editorStopRef = useRef<(() => void) | null>(null)
   const getCurrentCodeRef = useRef<(() => string) | null>(null)
   const editorUndoRef = useRef<(() => void) | null>(null)
   const editorRedoRef = useRef<(() => void) | null>(null)
   const editorClearRef = useRef<(() => void) | null>(null)
+  const getCycleInfoRef = useRef<(() => CycleInfo | null) | null>(null)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const pauseTimerRef = useRef<number | null>(null)
   const currentTranscriptRef = useRef<string>('')
@@ -157,6 +162,10 @@ const HomePage = () => {
     editorClearRef.current = clearFn
   }, [])
 
+  const handleCycleInfoReady = useCallback((getCycleInfoFn: () => CycleInfo | null) => {
+    getCycleInfoRef.current = getCycleInfoFn
+  }, [])
+
   const handleClear = useCallback(() => {
     if (editorClearRef.current) {
       editorClearRef.current()
@@ -228,11 +237,28 @@ const HomePage = () => {
           }
         }
       }
+      
+      // Spacebar to toggle play/stop (when not in a text input)
+      if (e.key === ' ' || e.code === 'Space') {
+        const activeElement = document.activeElement
+        const isTextInput = activeElement?.tagName === 'TEXTAREA' || 
+                           activeElement?.tagName === 'INPUT' ||
+                           (activeElement as HTMLElement)?.isContentEditable
+        
+        if (!isTextInput) {
+          e.preventDefault()
+          if (isEditorPlaying) {
+            editorStopRef.current?.()
+          } else {
+            editorPlayRef.current?.()
+          }
+        }
+      }
     }
 
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [isMac, prompt])
+  }, [isMac, prompt, isEditorPlaying])
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -454,6 +480,19 @@ const HomePage = () => {
     }
   }
 
+  // EXPERIMENTAL: Hum-to-melody feature - uncomment to enable
+  // const handleMelodyCapture = useCallback((notation: string) => {
+  //   const melodyText = `Use the melody "${notation}"`
+  //   setPrompt(prev => prev ? `${prev} ${melodyText}` : melodyText)
+  // }, [])
+
+  // Handler for sequencer console sending notation to prompt
+  const handleSequencerNotation = useCallback((notation: string) => {
+    if (!notation) return
+    const melodyText = `Use this pattern: ${notation}`
+    setPrompt(prev => prev ? `${prev}\n${melodyText}` : melodyText)
+  }, [])
+
   const handleFixError = async () => {
     if (!strudelError) return
 
@@ -555,7 +594,7 @@ Return ONLY the fixed Strudel code, no explanations.`
                   <Square className="h-3 w-3 mx-1" />
                   {isMac ? 'CMD+. // ' : 'CTRL+. // '}
                   <a 
-                    href="https://youtu.be/Rhxc0NPakGE" 
+                    href="https://github.com/VoloBuilds/toaster" 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="text-slate-400 hover:text-slate-200 underline underline-offset-2"
@@ -578,7 +617,17 @@ Return ONLY the fixed Strudel code, no explanations.`
         </div>
 
         {/* Strudel Editor - Scrollable middle section */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pb-32 pt-2">
+        <div 
+          className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pb-32 pt-2"
+          onClick={() => {
+            // On vertical/portrait screens, collapse the sequencer when clicking into the editor
+            // This helps users see what they're editing without the sequencer taking up space
+            const isVerticalScreen = window.innerHeight > window.innerWidth
+            if (isVerticalScreen && isSequencerOpen) {
+              setIsSequencerOpen(false)
+            }
+          }}
+        >
           <div className="w-full">
             <StrudelEditor 
               key="strudel-editor"
@@ -595,6 +644,7 @@ Return ONLY the fixed Strudel code, no explanations.`
               onClearReady={handleClearReady}
               onStrudelError={handleStrudelError}
               onCodeEvaluated={handleCodeEvaluated}
+              onCycleInfoReady={handleCycleInfoReady}
             />
           </div>
         </div>
@@ -712,8 +762,22 @@ Return ONLY the fixed Strudel code, no explanations.`
               </div>
             </div>
 
-            {/* Input bar */}
-            <div className="bg-slate-950/95 border-0 sm:border border-slate-700/50 rounded-none sm:rounded-xl shadow-2xl p-3 sm:p-4 pointer-events-auto">
+            {/* Combined Sequencer Console + Input Bar Container */}
+            <div className="pointer-events-auto">
+              {/* Sequencer Console - always rendered, visibility controlled by CSS */}
+              <SequencerConsole
+                isOpen={isSequencerOpen}
+                onSendToPrompt={handleSequencerNotation}
+                getCycleInfo={getCycleInfoRef.current || undefined}
+                isStrudelPlaying={isEditorPlaying}
+              />
+
+              {/* Input bar - visually connected to sequencer when open */}
+              <div className={`bg-slate-950/95 border-0 sm:border border-slate-700/50 shadow-2xl p-3 sm:p-4 transition-all duration-300 ${
+                isSequencerOpen 
+                  ? 'rounded-none sm:rounded-b-xl sm:border-t-0' 
+                  : 'rounded-none sm:rounded-xl'
+              }`}>
               <div className="flex gap-3 items-end">
                 {/* Mic Button - Left (hidden on Android due to Web Speech API reliability issues) */}
                 {!isAndroid && (
@@ -739,6 +803,32 @@ Return ONLY the fixed Strudel code, no explanations.`
                     </Button>
                   </div>
                 )}
+
+                {/* EXPERIMENTAL: Melody Input Button - Press-and-hold for hum-to-melody */}
+                {/* Uncomment to enable:
+                <MelodyInput
+                  onMelodyCapture={handleMelodyCapture}
+                  disabled={isGenerating}
+                  isPlaying={isEditorPlaying}
+                  getCycleInfo={getCycleInfoRef.current || undefined}
+                />
+                */}
+
+                {/* Sequencer Button */}
+                <div className="flex-shrink-0">
+                  <Button
+                    onClick={() => setIsSequencerOpen(prev => !prev)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    disabled={!isEditorInitialized || isEditorInitializing}
+                    className={`rounded-full w-11 h-11 sm:w-12 sm:h-12 p-0 border text-white transition-colors ${
+                      isSequencerOpen 
+                        ? 'bg-amber-700/90 hover:bg-amber-600 border-amber-500' 
+                        : 'bg-slate-800/90 hover:bg-slate-700 border-slate-600'
+                    }`}
+                  >
+                    <KeyboardMusic className="h-5 w-5" />
+                  </Button>
+                </div>
 
                 {/* AI Prompt Input with Send Button - Center */}
                 <div className="flex-1 relative">
@@ -780,6 +870,7 @@ Return ONLY the fixed Strudel code, no explanations.`
                   </Button>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </div>

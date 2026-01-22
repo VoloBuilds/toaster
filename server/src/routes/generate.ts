@@ -63,7 +63,7 @@ const generateStrudelCode = async (
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey: env.OPENROUTER_API_KEY,
     defaultHeaders: {
-      'HTTP-Referer': env.APP_URL || 'https://volobuilds.com/toaster',
+      'HTTP-Referer': env.APP_URL || 'https://voloblack.com/toaster',
       'X-Title': 'Toaster Music Generator',
     }
   })
@@ -81,14 +81,15 @@ ${STRUDEL_DOCS}`
 ${currentPattern}
 \`\`\`
 
-User request: ${prompt}
-
-IMPORTANT: Return the FULL updated pattern based on the user's request.
-- If they ask to "add" something, keep all existing tracks and add new ones.
-- If they ask to "change" or "modify" something specific, make that change but keep everything else.
+IMPORTANT: Return the FULL updated pattern based on this request.
+- If they ask to add something, keep all existing tracks and add new ones.
+- If they ask to change or modify something specific, ONLY CHANGE THAT ONE THING - keep everything else the same.
 - If they report an ERROR or WARNING, you MUST analyze the code and fix the issue. Do NOT return the same pattern - identify what's causing the error and modify the code to resolve it.
 - Always return the complete, updated pattern code - never just a fragment.
-- Only return raw Strudel code, no explanations or markdown.`
+- Only return raw Strudel code, no explanations or markdown.
+
+User request: ${prompt}
+`
   } else {
     userMessage = `Generate a new Strudel pattern for: ${prompt}
 
@@ -97,19 +98,30 @@ Only return raw Strudel code, no explanations or markdown.`
 
   const completion = await openai.chat.completions.create({
     //TODO: Not sure why the env.OPENROUTER_MODEL is getting ignored
-    // model: 'x-ai/grok-4-fast',
+    // model: 'x-ai/grok-4.1-fast',
     // model: env.OPENROUTER_MODEL || 'google/gemini-2.5-flash',
+    // model: 'google/gemini-2.5-flash',
     // model: 'google/gemini-3-flash-preview',
-    model: 'google/gemini-2.5-flash-preview-09-2025',
-    // model: 'openai/gpt-4.1-mini',
+    model: 'google/gemini-2.5-flash-preview-09-2025', // This was the best one :( but now deprecated
+    // model: 'anthropic/claude-haiku-4.5',
     messages: [
       { role: 'system', content: systemPrompt },
+      // { //Anthropic-specific prompt caching
+      //   role: 'system', 
+      //   content: [
+      //     { 
+      //       type: 'text', 
+      //       text: systemPrompt,
+      //       // @ts-expect-error - Anthropic-specific cache control for prompt caching
+      //       cache_control: { type: 'ephemeral' }
+      //     }
+      //   ]
+      // },
       { role: 'user', content: userMessage }
     ],
-    // @ts-expect-error
-    reason:{
-      enabled: false
-    },
+    // reasoning: {
+    //   enabled: false
+    // },
     temperature: 0.7,
     // max_tokens: 2000,
   })

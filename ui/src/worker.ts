@@ -2,9 +2,9 @@
  * Cloudflare Worker for serving Toaster UI static assets
  * 
  * Serves files built to dist/ directory at /toaster/ path:
- *   volobuilds.com/toaster/ -> dist/toaster/index.html
- *   volobuilds.com/toaster/?share=abc123 -> dist/toaster/index.html (with query params)
- *   volobuilds.com/toaster/assets/main.js -> dist/toaster/assets/main.js
+ *   voloblack.com/toaster/ -> dist/toaster/index.html
+ *   voloblack.com/toaster/?share=abc123 -> dist/toaster/index.html (with query params)
+ *   voloblack.com/toaster/assets/main.js -> dist/toaster/assets/main.js
  * 
  * Assets are cached at the edge - worker just routes requests.
  * Worker invocation is fast (microseconds), actual assets served from cache.

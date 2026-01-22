@@ -112,7 +112,7 @@ samples('shabda:bass:4,hihat:4,rimshot:2')
 s("bass hihat rimshot").n("0 1 2 3")
 \`\`\`
 
-**Text-to-Speech:**
+**Text-to-Speech, Vocal Samples:**
 \`\`\`javascript
 samples('shabda/speech:hello,world,strudel')
 s("hello world strudel")

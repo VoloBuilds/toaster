@@ -6,4 +6,5 @@
 - Never try to start the app itself (I have it running in a separate terminal) 
 - When conducting data schema changes that impact the database, just write the sql to a file and I will run it myself. Don't write any foreign key constraints or cascades.
 - Don't ever use sonner, toast, or notifications
+- Don't use mkdir - directories will be created automatically when you make files
 - Any imports should be at the top of the file (no inline dynamic imports)

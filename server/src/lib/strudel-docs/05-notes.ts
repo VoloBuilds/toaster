@@ -200,9 +200,6 @@ note("d [f a] ~ c4").transpose("<0 2 4>")  // Transpose by semitones
 **Scale transposition:**
 n("[0 2] ~ 4 7 [4 2]").scale("E:minor").scaleTranspose("<0 1 2>")  // Transpose within scale
 
-**Mode (set root note):**
-n("[0 2 4] ~ 7 [4 2]").scale("E:minor").mode("root:g2")  // Root at G2
-
 ### Arpeggiation
 
 **Note:** \`.arp()\` selects indices from stacked notes - it's for advanced use. For melodic patterns, use sequential notes or voicings:
@@ -229,7 +226,7 @@ note("<[d,f#,a,c4]!2 [g,bb,d4,f4] [a,c#4,e4,g4]>").arp("0 [0,2] 1 3")  // Advanc
 | \`voicing()\` | Voice chords | \`.voicing()\` |
 | \`dict()\` | Set chord dictionary | \`.dict('ireal')\` |
 | \`rootNotes()\` | Extract chord roots | \`.rootNotes(2)\` |
-| \`mode()\` | Set scale root/range | \`.mode("root:g2")\` |
+| \`mode()\` | Set scale root/range (only works after .chord(), not .scale()) | \`.mode("root:g2")\` |
 | \`anchor()\` | Adaptive voicing | \`.anchor(pattern)\` |
 | \`arp()\` | Arpeggiate indices | \`.arp("0 1 2 3")\` |
 `;

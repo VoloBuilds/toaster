@@ -26,6 +26,8 @@ stack(
 
 Both methods achieve the same result - all patterns play simultaneously.
 
+IMPORTANT: when you add new tracks, use \`$:\` to play them together at the same time (we want this!)
+
 ### Code Structure
 
 Strudel uses function chaining:
