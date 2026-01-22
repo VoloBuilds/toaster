@@ -188,7 +188,8 @@ $: s("bd*4").room(0).roomsize(0).orbit(1)
 
 **Why:** Each orbit has ONE delay and ONE reverb. If multiple patterns use the same orbit with different settings, the last pattern's settings win, causing unexpected results.
 Also, you should use orbit in a way where one instrument occupies an orbit and other duck that orbit (see duck instructions).
-
+`+
+`
 ### Missing $: for Multiple Instruments
 
 **❌ WRONG - Only the last pattern plays!**
@@ -206,7 +207,8 @@ $: s("bd*4, hh*8")  // Now both play together!
 \`\`\`
 
 **Why:** Without \`$:\`, each line replaces the previous pattern. The \`$:\` prefix registers each pattern as a separate track, allowing multiple instruments to play simultaneously. Always use \`$:\` when you have more than one pattern.
-
+`
++`
 ### Commenting Out Tracks (Silencing & muting)
 
 \`\`\`js

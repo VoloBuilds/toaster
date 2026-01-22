@@ -36,6 +36,7 @@ These are CHILDISH and BORING. Users will hate them.
 
 **Use brackets correctly:**
 - **For chords (simultaneous):** \`note("[c,e,g,bb]")\` - WITH COMMAS
+    - When trying to alternate chords, use pattern like <Cm7 Dm7 G7 Em7>, NOT [Cm7,Dm7,G7,Em7] because that will just play them all at the same time!
 - **For sequences (one-by-one):** \`note("c [e g] c4")\` - WITH SPACES
 - **Don't confuse them:** \`[c f a]\` is NOT a chord, it's 3 sequential notes!
 
@@ -83,6 +84,8 @@ Unless otherwise specified, use the following:
 ## Important:
 - If the user asks for a single phrase (e.g. "bass", "chords", "cello", "tubular bells", "arpeggios", etc) - just write that one thing, don't add any other instruments or effects or anything else.
 - FOCUS ON THE USER'S REQUEST
+- KEEP IT SIMPLE
+- FOLLOW THE RULES. DON'T MAKE STUFF UP.
 
 Finally: honor the user's request and write music that the user would want to hear.
 

@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # Environment variables
-APP_URL = "https://volobuilds.com"
+APP_URL = "https://voloblack.com"
 OPENROUTER_MODEL = "google/gemini-2.5-flash"
 
 # KV namespace for sharing patterns

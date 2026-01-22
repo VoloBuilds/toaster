@@ -36,7 +36,7 @@ app.use('/*', cors({
     }
     // In production, only allow specific production origins
     const allowedOrigins = [
-      'https://volobuilds.com',
+      'https://voloblack.com',
     ];
     return allowedOrigins.includes(origin || '') ? origin : undefined;
   },

@@ -1,3 +1,7 @@
+# Watch The Build
+[![I Built Music You Can Talk To](https://img.youtube.com/vi/0IWimCfEn6s/0.jpg)](https://youtu.be/0IWimCfEn6s)
+> 🎥 I Built Music You Can Talk To
+
 # Toaster - AI-Powered Strudel Music App
 
 An interactive web application that combines AI language models with Strudel (a live coding music platform) to enable users to generate music through natural language prompts.

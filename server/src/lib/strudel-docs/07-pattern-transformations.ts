@@ -414,11 +414,18 @@ s("a@2 [a b] a".inhabit({a: "bd(3,8)", b: "sd sd"})).slow(4)
 
 ### Arpeggiation
 
-**Note:** \`.arp()\` selects indices from stacked notes - it's for advanced cases. For melodic patterns, use sequential notes or voicings instead:
+**Note:** \`.arp()\` selects indices FROM STACKED NOTES
+It is for advanced cases ONLY. DO NOT USE IT (unless the user already has it in the code)
+
+For melodic patterns, use sequential notes or voicings instead:
 
 // For melodies, skip arp:
 n("[0 2] ~ [4 7] 9 ~ [7 4]").scale("E:minor")  // Sequential notes
 n("0 1 2 3").chord("Cm").mode("above:c3").voicing()  // Chord voicings
+
+Note:
+.mode() does NOT work with .scale(). Only works with .chord(). <---
+.voicing() is ONLY for .chord() and not for .scale()
 
 // arp() selects indices from stacked notes:
 note("[a,c#,e,g]").arp("0 1 2 3")  // Am7 chord - selects index 0, 1, 2, then 3 from chord

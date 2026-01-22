@@ -63,7 +63,7 @@ const generateStrudelCode = async (
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey: env.OPENROUTER_API_KEY,
     defaultHeaders: {
-      'HTTP-Referer': env.APP_URL || 'https://volobuilds.com/toaster',
+      'HTTP-Referer': env.APP_URL || 'https://voloblack.com/toaster',
       'X-Title': 'Toaster Music Generator',
     }
   })
@@ -100,8 +100,9 @@ Only return raw Strudel code, no explanations or markdown.`
     //TODO: Not sure why the env.OPENROUTER_MODEL is getting ignored
     // model: 'x-ai/grok-4.1-fast',
     // model: env.OPENROUTER_MODEL || 'google/gemini-2.5-flash',
-    model: 'google/gemini-2.5-flash',
-    // model: 'google/gemini-2.5-flash-preview-09-2025', // This was the best one :( but now deprecated
+    // model: 'google/gemini-2.5-flash',
+    // model: 'google/gemini-3-flash-preview',
+    model: 'google/gemini-2.5-flash-preview-09-2025', // This was the best one :( but now deprecated
     // model: 'anthropic/claude-haiku-4.5',
     messages: [
       { role: 'system', content: systemPrompt },
